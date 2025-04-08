@@ -220,12 +220,14 @@ function App() {
                         </p>
                       )}
                     </div>
-                    <button
-                      onClick={() => handleGenerateGroupNotes(group)}
-                      className="px-4 py-2 bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 transition-colors"
-                    >
-                      Generate Notes for Group
-                    </button>
+                    {group.files.length > 1 && (
+                      <button
+                        onClick={() => handleGenerateGroupNotes(group)}
+                        className="px-4 py-2 bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 transition-colors"
+                      >
+                        Generate Notes for Group
+                      </button>
+                    )}
                   </div>
                   <div className="space-y-2">
                     {group.files.map((file, fileIndex) => (
