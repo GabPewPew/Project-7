@@ -20,6 +20,7 @@ function App() {
   const [contentGroups, setContentGroups] = useState<ContentGroup[]>([]);
   const [mergedContent, setMergedContent] = useState<string>('');
   const [aiNotes, setAiNotes] = useState<string>('');
+  const [isGeneratingNotes, setIsGeneratingNotes] = useState(false);
   
   // Learning intent states
   const [selectedIntent, setSelectedIntent] = useState<LearningIntent>('exam_prep');
@@ -52,6 +53,7 @@ function App() {
     if (files.length === 0) return;
     
     setProcessing(true);
+    setIsGeneratingNotes(true);
     setError(null);
     setResults([]);
     setContentGroups([]);
@@ -109,6 +111,7 @@ function App() {
       setError(err instanceof Error ? err.message : 'An error occurred');
     } finally {
       setProcessing(false);
+      setIsGeneratingNotes(false);
     }
   };
 
@@ -119,6 +122,7 @@ function App() {
       return;
     }
 
+    setIsGeneratingNotes(true);
     try {
       console.log('🔄 Generating notes for group:', group.groupTitle);
       const geminiResponse = await generateNotes({
@@ -140,6 +144,8 @@ function App() {
     } catch (error) {
       console.error('❌ Failed to generate group notes:', error);
       setError(error instanceof Error ? error.message : 'Failed to generate notes');
+    } finally {
+      setIsGeneratingNotes(false);
     }
   };
 
@@ -187,16 +193,17 @@ function App() {
               onExamStyleChange={setExamStyle}
               onResearchStyleChange={setResearchStyle}
               onCustomPromptChange={setCustomPrompt}
+              showControls={!processing && !isGeneratingNotes}
             />
 
             <div className="text-center">
               <button
                 onClick={handleGenerateNotes}
-                disabled={processing}
+                disabled={processing || isGeneratingNotes}
                 className="bg-blue-600 text-white px-6 py-3 rounded-lg font-medium hover:bg-blue-700 
                   transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed"
               >
-                {processing ? 'Processing...' : 'Generate Notes'}
+                {processing || isGeneratingNotes ? 'Processing...' : 'Generate Notes'}
               </button>
             </div>
           </div>
@@ -222,7 +229,9 @@ function App() {
                     {group.files.length > 1 && (
                       <button
                         onClick={() => handleGenerateGroupNotes(group)}
-                        className="px-4 py-2 bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 transition-colors"
+                        disabled={isGeneratingNotes}
+                        className="px-4 py-2 bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 
+                                 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                       >
                         Generate Notes for Group
                       </button>
@@ -244,12 +253,13 @@ function App() {
           </div>
         )}
 
-        {aiNotes && (
+        {(aiNotes || isGeneratingNotes) && (
           <div className="mt-8">
             <NotesEditor
               notes={aiNotes}
               onNotesChange={handleNotesChange}
               onExport={handleExport}
+              isLoading={isGeneratingNotes}
             />
           </div>
         )}

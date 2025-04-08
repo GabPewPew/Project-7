@@ -8,32 +8,63 @@
   --mdxe-border-color: transparent !important;
 }
 
+/* Toolbar Styles */
 .mdxeditor-toolbar {
-  @apply bg-gray-50 border border-gray-100 rounded-lg mb-4 p-2;
+  @apply bg-white border-0 p-0 sticky top-0 z-10;
 }
 
 .mdxeditor-toolbar button {
-  @apply hover:bg-gray-100 rounded transition-colors;
+  @apply h-8 px-2.5 text-sm text-gray-700 rounded-md transition-colors inline-flex items-center justify-center gap-1.5;
+  @apply hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1;
 }
 
-.mdxeditor-toolbar select {
-  @apply bg-white border border-gray-200 rounded px-2 py-1;
+.mdxeditor-toolbar button[aria-pressed="true"] {
+  @apply bg-blue-50 text-blue-700;
 }
 
+.mdxeditor-toolbar button svg {
+  @apply w-4 h-4;
+}
+
+/* Block Type Select Styles */
+.mdxeditor-block-type-select {
+  @apply relative;
+}
+
+.mdxeditor-block-type-select button {
+  @apply h-8 px-3 text-sm bg-white border border-gray-200 rounded-md cursor-pointer min-w-[120px] justify-between;
+  @apply hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500;
+}
+
+.mdxeditor-block-type-select [role="listbox"] {
+  @apply absolute left-0 mt-1 w-full bg-white border border-gray-200 rounded-md shadow-lg z-50;
+  @apply py-1 max-h-60 overflow-auto focus:outline-none;
+}
+
+.mdxeditor-block-type-select [role="option"] {
+  @apply px-3 py-2 text-sm text-gray-700 cursor-pointer;
+  @apply hover:bg-gray-50 focus:bg-gray-50 focus:outline-none;
+}
+
+.mdxeditor-block-type-select [role="option"][aria-selected="true"] {
+  @apply bg-blue-50 text-blue-700;
+}
+
+/* Editor Content Styles */
 .mdxeditor [data-lexical-editor] {
   @apply prose prose-slate max-w-none;
 }
 
 .mdxeditor [data-lexical-editor] h1 {
-  @apply text-3xl font-bold mb-4 mt-6;
+  @apply text-3xl font-bold mb-6 mt-8;
 }
 
 .mdxeditor [data-lexical-editor] h2 {
-  @apply text-2xl font-bold mb-3 mt-5;
+  @apply text-2xl font-bold mb-4 mt-6;
 }
 
 .mdxeditor [data-lexical-editor] h3 {
-  @apply text-xl font-bold mb-3 mt-4;
+  @apply text-xl font-bold mb-3 mt-5;
 }
 
 .mdxeditor [data-lexical-editor] p {
@@ -74,4 +105,59 @@
 
 .mdxeditor [data-lexical-editor] a {
   @apply text-blue-600 hover:text-blue-800 underline;
+}
+
+.mdxeditor [data-lexical-editor] img {
+  @apply rounded-lg shadow-md my-6 mx-auto max-w-full;
+}
+
+/* Fix for underline functionality */
+.mdxeditor [data-lexical-editor] u {
+  @apply underline decoration-1;
+}
+
+/* Prevent scroll jump */
+.mdxeditor [data-lexical-editor] {
+  @apply overflow-y-auto;
+  scroll-behavior: smooth;
+}
+
+/* Heading Styles */
+.mdxeditor [data-lexical-editor] [data-heading="h1"] {
+  @apply text-3xl font-bold;
+}
+
+.mdxeditor [data-lexical-editor] [data-heading="h2"] {
+  @apply text-2xl font-semibold;
+}
+
+.mdxeditor [data-lexical-editor] [data-heading="h3"] {
+  @apply text-xl font-medium;
+}
+
+/* Toolbar Button Groups */
+.mdxeditor-toolbar > div {
+  @apply flex items-center;
+}
+
+.mdxeditor-toolbar > div + div {
+  @apply ml-4;
+}
+
+/* Active State for Text Styles */
+.mdxeditor [data-lexical-editor] [data-active="true"] {
+  @apply bg-blue-50;
+}
+
+/* Link Editor Styles */
+.mdxeditor-link-editor {
+  @apply absolute z-50 flex items-center gap-2 p-2 bg-white border border-gray-200 rounded-lg shadow-lg;
+}
+
+.mdxeditor-link-editor input {
+  @apply px-2 py-1 text-sm border border-gray-200 rounded focus:outline-none focus:ring-2 focus:ring-blue-500;
+}
+
+.mdxeditor-link-editor button {
+  @apply p-1 text-gray-500 hover:text-gray-700;
 }
