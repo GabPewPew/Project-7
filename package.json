@@ -10,6 +10,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@mdxeditor/editor": "^1.14.3",
     "@uploadthing/react": "^6.2.4",
     "axios": "^1.8.4",
     "form-data": "^4.0.2",
@@ -23,6 +24,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.9.1",
+    "@tailwindcss/typography": "^0.5.10",
     "@types/react": "^18.3.5",
     "@types/react-dom": "^18.3.0",
     "@vitejs/plugin-react": "^4.3.1",

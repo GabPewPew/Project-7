@@ -1,3 +1,77 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+.mdxeditor {
+  border: none !important;
+  --mdxe-bg-color: transparent !important;
+  --mdxe-border-color: transparent !important;
+}
+
+.mdxeditor-toolbar {
+  @apply bg-gray-50 border border-gray-100 rounded-lg mb-4 p-2;
+}
+
+.mdxeditor-toolbar button {
+  @apply hover:bg-gray-100 rounded transition-colors;
+}
+
+.mdxeditor-toolbar select {
+  @apply bg-white border border-gray-200 rounded px-2 py-1;
+}
+
+.mdxeditor [data-lexical-editor] {
+  @apply prose prose-slate max-w-none;
+}
+
+.mdxeditor [data-lexical-editor] h1 {
+  @apply text-3xl font-bold mb-4 mt-6;
+}
+
+.mdxeditor [data-lexical-editor] h2 {
+  @apply text-2xl font-bold mb-3 mt-5;
+}
+
+.mdxeditor [data-lexical-editor] h3 {
+  @apply text-xl font-bold mb-3 mt-4;
+}
+
+.mdxeditor [data-lexical-editor] p {
+  @apply my-4 leading-relaxed;
+}
+
+.mdxeditor [data-lexical-editor] ul {
+  @apply list-disc pl-5 my-4;
+}
+
+.mdxeditor [data-lexical-editor] ol {
+  @apply list-decimal pl-5 my-4;
+}
+
+.mdxeditor [data-lexical-editor] li {
+  @apply my-2;
+}
+
+.mdxeditor [data-lexical-editor] blockquote {
+  @apply border-l-4 border-gray-200 pl-4 my-4 italic;
+}
+
+.mdxeditor [data-lexical-editor] code {
+  @apply bg-gray-100 rounded px-1.5 py-0.5 text-sm;
+}
+
+.mdxeditor [data-lexical-editor] pre {
+  @apply bg-gray-900 text-white p-4 rounded-lg my-4 overflow-x-auto;
+}
+
+.mdxeditor [data-lexical-editor] pre code {
+  @apply bg-transparent text-inherit p-0;
+}
+
+.mdxeditor [data-lexical-editor] hr {
+  @apply my-8 border-t-2 border-gray-100;
+}
+
+.mdxeditor [data-lexical-editor] a {
+  @apply text-blue-600 hover:text-blue-800 underline;
+}

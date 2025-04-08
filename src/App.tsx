@@ -10,7 +10,6 @@ import { mergeExtractedContent } from './lib/mergeExtractedContent';
 import { ProcessingResult, ContentGroup, LearningIntent, ExamPrepStyle, ResearchStyle } from './types';
 import { generateNotes } from './lib/geminiProcessor';
 import { groupContentBySimilarity } from './lib/contentGrouping';
-import { renderMarkdownToJSX } from './lib/markdownRenderer';
 
 function App() {
   const [files, setFiles] = useState<File[]>([]);
@@ -251,7 +250,6 @@ function App() {
               notes={aiNotes}
               onNotesChange={handleNotesChange}
               onExport={handleExport}
-              renderMarkdown={renderMarkdownToJSX}
             />
           </div>
         )}
