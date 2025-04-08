@@ -55,3 +55,17 @@ export interface MarkdownRendererProps {
   markdown: string;
   className?: string;
 }
+
+export interface SavedNote {
+  id: string;
+  title: string;
+  content: string;
+  timestamp: number;
+  metadata: {
+    learningIntent: LearningIntent;
+    style?: ExamPrepStyle | ResearchStyle;
+    sourceFiles: string[];
+    primary?: string;
+    secondary?: string;
+  };
+}

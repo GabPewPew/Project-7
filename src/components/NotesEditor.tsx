@@ -11,13 +11,7 @@ import {
   codeBlockPlugin,
   imagePlugin,
   tablePlugin,
-  frontmatterPlugin,
-  toolbarPlugin,
-  BoldItalicUnderlineToggles,
-  CreateLink,
-  InsertCodeBlock,
-  ListsToggle,
-  BlockTypeSelect
+  frontmatterPlugin
 } from '@mdxeditor/editor';
 
 interface NotesEditorProps {
@@ -27,20 +21,6 @@ interface NotesEditorProps {
   onExport: (format: 'pdf' | 'docx') => void;
   isLoading?: boolean;
 }
-
-const ToolbarContent = () => (
-  <div className="mdxeditor-selection-toolbar flex items-center gap-1 p-1.5 bg-white rounded-lg shadow-lg border border-gray-200">
-    <BlockTypeSelect />
-    <div className="w-px h-6 mx-1 bg-gray-200" />
-    <BoldItalicUnderlineToggles />
-    <div className="w-px h-6 mx-1 bg-gray-200" />
-    <ListsToggle />
-    <div className="w-px h-6 mx-1 bg-gray-200" />
-    <CreateLink />
-    <div className="w-px h-6 mx-1 bg-gray-200" />
-    <InsertCodeBlock />
-  </div>
-);
 
 const LoadingSpinner = () => (
   <div className="flex items-center justify-center min-h-[400px]">
@@ -64,10 +44,6 @@ export default function NotesEditor({ notes, images, onNotesChange, onExport, is
     if (notes?.trim()) {
       const processedContent = processNotesWithImages(notes);
       setLocalContent(processedContent);
-      
-      if (editorRef.current) {
-        editorRef.current.setMarkdown(processedContent);
-      }
     }
   }, [notes, images]);
 
@@ -153,15 +129,12 @@ export default function NotesEditor({ notes, images, onNotesChange, onExport, is
               quotePlugin(),
               thematicBreakPlugin(),
               markdownShortcutPlugin(),
-              codeBlockPlugin({ defaultCodeBlockLanguage: 'txt' }),
+              codeBlockPlugin(),
               imagePlugin(),
               tablePlugin(),
-              frontmatterPlugin(),
-              toolbarPlugin({
-                toolbarContents: () => <ToolbarContent />
-              })
+              frontmatterPlugin()
             ]}
-            contentEditableClassName="prose prose-slate max-w-none min-h-[500px] text-base leading-relaxed px-6 py-4"
+            contentEditableClassName="prose prose-slate max-w-none min-h-[calc(100vh-12rem)] text-base leading-relaxed px-6 py-4"
           />
         )}
       </div>
