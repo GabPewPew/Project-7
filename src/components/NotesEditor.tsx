@@ -1,111 +1,56 @@
-import React, { useEffect, useRef, useState } from 'react';
-import { FileText, Download, Loader2 } from 'lucide-react';
-import {
-  MDXEditor,
-  headingsPlugin,
-  listsPlugin,
-  quotePlugin,
-  thematicBreakPlugin,
-  markdownShortcutPlugin,
-  MDXEditorMethods,
-  codeBlockPlugin,
-  imagePlugin,
-  tablePlugin,
-  frontmatterPlugin
-} from '@mdxeditor/editor';
+import React from 'react';
+import { FileText, Download } from 'lucide-react';
 
 interface NotesEditorProps {
+  noteId: string;
   notes: string;
-  images?: Array<{ url: string; caption?: string }>;
   onNotesChange: (notes: string) => void;
   onExport: (format: 'pdf' | 'docx') => void;
   isLoading?: boolean;
 }
 
-const LoadingSpinner = () => (
-  <div className="flex items-center justify-center min-h-[400px]">
-    <Loader2 className="w-8 h-8 text-blue-500 animate-spin" />
-  </div>
-);
+export default function NotesEditor({ noteId, notes, onExport, isLoading }: NotesEditorProps) {
+  // Early return for loading state
+  if (isLoading) {
+    return (
+      <div className="bg-white rounded-lg p-6 text-center">
+        <p className="text-gray-500">Loading notes...</p>
+      </div>
+    );
+  }
 
-const EmptyState = () => (
-  <div className="flex flex-col items-center justify-center min-h-[400px] text-gray-500">
-    <FileText className="w-12 h-12 mb-4" />
-    <p className="text-lg font-medium">No notes generated yet</p>
-    <p className="text-sm">Click "Generate Notes" to get started</p>
-  </div>
-);
-
-export default function NotesEditor({ notes, images, onNotesChange, onExport, isLoading }: NotesEditorProps) {
-  const editorRef = useRef<MDXEditorMethods>(null);
-  const [localContent, setLocalContent] = useState<string>('');
-
-  useEffect(() => {
-    if (notes?.trim()) {
-      const processedContent = processNotesWithImages(notes);
-      setLocalContent(processedContent);
-    }
-  }, [notes, images]);
-
-  const processNotesWithImages = (markdown: string): string => {
-    if (!images || images.length === 0) return markdown;
-
-    let processedMarkdown = markdown;
-    const sections = processedMarkdown.split(/(?=^#{1,6}\s)/m);
-    let imageIndex = 0;
-
-    processedMarkdown = sections.map(section => {
-      const shouldAddImage = imageIndex < images.length && (
-        section.toLowerCase().includes('figure') ||
-        section.toLowerCase().includes('diagram') ||
-        section.toLowerCase().includes('illustration') ||
-        /^#{1,3}\s+(overview|introduction|summary|conclusion)/i.test(section)
-      );
-
-      if (shouldAddImage) {
-        const image = images[imageIndex++];
-        return `${section.trim()}\n\n![${image.caption || `Figure ${imageIndex}`}](${image.url})\n`;
-      }
-      return section;
-    }).join('\n\n');
-
-    while (imageIndex < images.length) {
-      const image = images[imageIndex++];
-      if (image.caption && !processedMarkdown.includes(image.url)) {
-        processedMarkdown += `\n\n![${image.caption}](${image.url})\n`;
-      }
-    }
-
-    return processedMarkdown;
-  };
-
-  const handleEditorChange = (content: string) => {
-    setLocalContent(content);
-    onNotesChange(content);
-  };
+  // Early return for empty content
+  if (!notes?.trim()) {
+    return (
+      <div className="bg-white rounded-lg p-6 text-center">
+        <p className="text-gray-500">No notes generated yet.</p>
+      </div>
+    );
+  }
 
   return (
-    <div className="bg-white rounded-xl shadow-md overflow-hidden">
-      <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200">
+    <div className="bg-white rounded-lg shadow-sm">
+      <div className="flex items-center justify-between p-4 border-b">
         <div className="flex items-center">
           <FileText className="w-5 h-5 text-gray-500 mr-2" />
-          <h3 className="text-lg font-medium text-gray-900">Generated Notes</h3>
+          <h3 className="text-lg font-medium text-gray-900">Raw Note Content</h3>
+          <span className="ml-2 text-sm text-gray-500">
+            {notes.length} characters
+          </span>
         </div>
-        <div className="flex gap-x-2">
+        <div className="flex space-x-2">
           <button
             onClick={() => onExport('pdf')}
-            disabled={!localContent || isLoading}
-            className="inline-flex items-center px-3 py-1.5 text-sm font-medium bg-blue-50 text-blue-700 
-                     rounded-lg hover:bg-blue-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            className="flex items-center px-3 py-1.5 text-sm bg-blue-50 text-blue-700 rounded-lg 
+                     hover:bg-blue-100 transition-colors"
           >
             <Download className="w-4 h-4 mr-1.5" />
             PDF
           </button>
           <button
             onClick={() => onExport('docx')}
-            disabled={!localContent || isLoading}
-            className="inline-flex items-center px-3 py-1.5 text-sm font-medium bg-blue-50 text-blue-700 
-                     rounded-lg hover:bg-blue-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            className="flex items-center px-3 py-1.5 text-sm bg-blue-50 text-blue-700 rounded-lg 
+                     hover:bg-blue-100 transition-colors"
           >
             <Download className="w-4 h-4 mr-1.5" />
             DOCX
@@ -113,30 +58,10 @@ export default function NotesEditor({ notes, images, onNotesChange, onExport, is
         </div>
       </div>
 
-      <div className="relative">
-        {isLoading ? (
-          <LoadingSpinner />
-        ) : !localContent ? (
-          <EmptyState />
-        ) : (
-          <MDXEditor
-            ref={editorRef}
-            markdown={localContent}
-            onChange={handleEditorChange}
-            plugins={[
-              headingsPlugin(),
-              listsPlugin(),
-              quotePlugin(),
-              thematicBreakPlugin(),
-              markdownShortcutPlugin(),
-              codeBlockPlugin(),
-              imagePlugin(),
-              tablePlugin(),
-              frontmatterPlugin()
-            ]}
-            contentEditableClassName="prose prose-slate max-w-none min-h-[calc(100vh-12rem)] text-base leading-relaxed px-6 py-4"
-          />
-        )}
+      <div className="p-6">
+        <pre className="whitespace-pre-wrap text-sm font-mono bg-gray-50 p-4 rounded-lg">
+          {notes}
+        </pre>
       </div>
     </div>
   );

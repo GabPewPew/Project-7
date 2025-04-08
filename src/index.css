@@ -8,21 +8,32 @@
   --mdxe-border-color: transparent !important;
 }
 
-/* Editor Content Styles */
+.mdxeditor-toolbar {
+  @apply bg-gray-50 border border-gray-100 rounded-lg mb-4 p-2;
+}
+
+.mdxeditor-toolbar button {
+  @apply hover:bg-gray-100 rounded transition-colors;
+}
+
+.mdxeditor-toolbar select {
+  @apply bg-white border border-gray-200 rounded px-2 py-1;
+}
+
 .mdxeditor [data-lexical-editor] {
   @apply prose prose-slate max-w-none;
 }
 
 .mdxeditor [data-lexical-editor] h1 {
-  @apply text-3xl font-bold mb-6 mt-8;
+  @apply text-3xl font-bold mb-4 mt-6;
 }
 
 .mdxeditor [data-lexical-editor] h2 {
-  @apply text-2xl font-bold mb-4 mt-6;
+  @apply text-2xl font-bold mb-3 mt-5;
 }
 
 .mdxeditor [data-lexical-editor] h3 {
-  @apply text-xl font-bold mb-3 mt-5;
+  @apply text-xl font-bold mb-3 mt-4;
 }
 
 .mdxeditor [data-lexical-editor] p {
@@ -63,24 +74,4 @@
 
 .mdxeditor [data-lexical-editor] a {
   @apply text-blue-600 hover:text-blue-800 underline;
-}
-
-.mdxeditor [data-lexical-editor] img {
-  @apply rounded-lg shadow-md my-6 mx-auto max-w-full;
-}
-
-/* Fix for underline functionality */
-.mdxeditor [data-lexical-editor] u {
-  @apply underline decoration-1;
-}
-
-/* Prevent scroll jump */
-.mdxeditor [data-lexical-editor] {
-  @apply overflow-y-auto;
-  scroll-behavior: smooth;
-}
-
-/* Selection styles */
-.mdxeditor [data-lexical-editor]::selection {
-  @apply bg-blue-100;
 }

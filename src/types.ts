@@ -37,6 +37,8 @@ export interface GeminiRequest {
   detailLevel: 1 | 2 | 3;
   primary: string;
   secondary?: string;
+  fileId: string;
+  fileName: string;
 }
 
 export interface GeminiResponse {
@@ -58,14 +60,16 @@ export interface MarkdownRendererProps {
 
 export interface SavedNote {
   id: string;
-  title: string;
   content: string;
+  fileName: string;
   timestamp: number;
-  metadata: {
-    learningIntent: LearningIntent;
-    style?: ExamPrepStyle | ResearchStyle;
-    sourceFiles: string[];
-    primary?: string;
-    secondary?: string;
-  };
+  primary: string;
+  secondary?: string;
+}
+
+export interface FileStatus {
+  id: string;
+  fileName: string;
+  status: 'idle' | 'generating' | 'done' | 'error';
+  error?: string;
 }
