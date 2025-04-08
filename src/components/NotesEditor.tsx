@@ -7,19 +7,17 @@ import {
   quotePlugin,
   thematicBreakPlugin,
   markdownShortcutPlugin,
-  toolbarPlugin,
-  UndoRedo,
-  BoldItalicUnderlineToggles,
-  InsertThematicBreak,
-  InsertImage,
   MDXEditorMethods,
   codeBlockPlugin,
   imagePlugin,
   tablePlugin,
   frontmatterPlugin,
-  BlockTypeSelect,
-  ListsToggle,
+  toolbarPlugin,
+  BoldItalicUnderlineToggles,
   CreateLink,
+  InsertCodeBlock,
+  ListsToggle,
+  BlockTypeSelect
 } from '@mdxeditor/editor';
 
 interface NotesEditorProps {
@@ -30,32 +28,17 @@ interface NotesEditorProps {
   isLoading?: boolean;
 }
 
-const CustomToolbar = () => (
-  <div className="flex items-center gap-4 overflow-x-auto whitespace-nowrap px-4 py-3 border-b border-gray-200 bg-white">
-    <div className="flex items-center gap-2">
-      <UndoRedo />
-    </div>
-
-    <div className="h-6 w-px bg-gray-200" />
-    
-    <div className="flex items-center gap-2">
-      <BoldItalicUnderlineToggles />
-    </div>
-
-    <div className="h-6 w-px bg-gray-200" />
-
-    <div className="flex-shrink-0">
-      <BlockTypeSelect />
-    </div>
-
-    <div className="h-6 w-px bg-gray-200" />
-
-    <div className="flex items-center gap-2">
-      <ListsToggle />
-      <CreateLink />
-      <InsertImage />
-      <InsertThematicBreak />
-    </div>
+const ToolbarContent = () => (
+  <div className="mdxeditor-selection-toolbar flex items-center gap-1 p-1.5 bg-white rounded-lg shadow-lg border border-gray-200">
+    <BlockTypeSelect />
+    <div className="w-px h-6 mx-1 bg-gray-200" />
+    <BoldItalicUnderlineToggles />
+    <div className="w-px h-6 mx-1 bg-gray-200" />
+    <ListsToggle />
+    <div className="w-px h-6 mx-1 bg-gray-200" />
+    <CreateLink />
+    <div className="w-px h-6 mx-1 bg-gray-200" />
+    <InsertCodeBlock />
   </div>
 );
 
@@ -82,7 +65,6 @@ export default function NotesEditor({ notes, images, onNotesChange, onExport, is
       const processedContent = processNotesWithImages(notes);
       setLocalContent(processedContent);
       
-      // Force editor update when content changes
       if (editorRef.current) {
         editorRef.current.setMarkdown(processedContent);
       }
@@ -176,7 +158,7 @@ export default function NotesEditor({ notes, images, onNotesChange, onExport, is
               tablePlugin(),
               frontmatterPlugin(),
               toolbarPlugin({
-                toolbarContents: () => <CustomToolbar />
+                toolbarContents: () => <ToolbarContent />
               })
             ]}
             contentEditableClassName="prose prose-slate max-w-none min-h-[500px] text-base leading-relaxed px-6 py-4"

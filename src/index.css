@@ -8,46 +8,35 @@
   --mdxe-border-color: transparent !important;
 }
 
-/* Toolbar Styles */
-.mdxeditor-toolbar {
-  @apply bg-white border-0 p-0 sticky top-0 z-10;
+/* Selection Toolbar Styles */
+.mdxeditor-selection-toolbar {
+  @apply fixed z-50 bg-white rounded-lg shadow-lg border border-gray-200;
+  animation: toolbar-fade-in 0.2s ease-out;
 }
 
-.mdxeditor-toolbar button {
-  @apply h-8 px-2.5 text-sm text-gray-700 rounded-md transition-colors inline-flex items-center justify-center gap-1.5;
-  @apply hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1;
+@keyframes toolbar-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
-.mdxeditor-toolbar button[aria-pressed="true"] {
-  @apply bg-blue-50 text-blue-700;
+/* Toolbar Button Styles */
+.mdxeditor-selection-toolbar button {
+  @apply p-1.5 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded transition-colors;
 }
 
-.mdxeditor-toolbar button svg {
-  @apply w-4 h-4;
+.mdxeditor-selection-toolbar button[data-active="true"] {
+  @apply bg-blue-50 text-blue-600;
 }
 
-/* Block Type Select Styles */
-.mdxeditor-block-type-select {
-  @apply relative;
-}
-
-.mdxeditor-block-type-select button {
-  @apply h-8 px-3 text-sm bg-white border border-gray-200 rounded-md cursor-pointer min-w-[120px] justify-between;
+.mdxeditor-selection-toolbar select {
+  @apply h-8 px-2 text-sm bg-white border border-gray-200 rounded-md;
   @apply hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500;
-}
-
-.mdxeditor-block-type-select [role="listbox"] {
-  @apply absolute left-0 mt-1 w-full bg-white border border-gray-200 rounded-md shadow-lg z-50;
-  @apply py-1 max-h-60 overflow-auto focus:outline-none;
-}
-
-.mdxeditor-block-type-select [role="option"] {
-  @apply px-3 py-2 text-sm text-gray-700 cursor-pointer;
-  @apply hover:bg-gray-50 focus:bg-gray-50 focus:outline-none;
-}
-
-.mdxeditor-block-type-select [role="option"][aria-selected="true"] {
-  @apply bg-blue-50 text-blue-700;
 }
 
 /* Editor Content Styles */
@@ -122,42 +111,7 @@
   scroll-behavior: smooth;
 }
 
-/* Heading Styles */
-.mdxeditor [data-lexical-editor] [data-heading="h1"] {
-  @apply text-3xl font-bold;
-}
-
-.mdxeditor [data-lexical-editor] [data-heading="h2"] {
-  @apply text-2xl font-semibold;
-}
-
-.mdxeditor [data-lexical-editor] [data-heading="h3"] {
-  @apply text-xl font-medium;
-}
-
-/* Toolbar Button Groups */
-.mdxeditor-toolbar > div {
-  @apply flex items-center;
-}
-
-.mdxeditor-toolbar > div + div {
-  @apply ml-4;
-}
-
-/* Active State for Text Styles */
-.mdxeditor [data-lexical-editor] [data-active="true"] {
-  @apply bg-blue-50;
-}
-
-/* Link Editor Styles */
-.mdxeditor-link-editor {
-  @apply absolute z-50 flex items-center gap-2 p-2 bg-white border border-gray-200 rounded-lg shadow-lg;
-}
-
-.mdxeditor-link-editor input {
-  @apply px-2 py-1 text-sm border border-gray-200 rounded focus:outline-none focus:ring-2 focus:ring-blue-500;
-}
-
-.mdxeditor-link-editor button {
-  @apply p-1 text-gray-500 hover:text-gray-700;
+/* Selection styles */
+.mdxeditor [data-lexical-editor]::selection {
+  @apply bg-blue-100;
 }
