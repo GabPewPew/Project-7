@@ -11,6 +11,7 @@ interface IntentSelectorProps {
   onExamStyleChange: (style: ExamPrepStyle) => void;
   onResearchStyleChange: (style: ResearchStyle) => void;
   onCustomPromptChange: (prompt: string) => void;
+  showControls: boolean;
 }
 
 export default function IntentSelector({
@@ -22,81 +23,87 @@ export default function IntentSelector({
   onExamStyleChange,
   onResearchStyleChange,
   onCustomPromptChange,
+  showControls
 }: IntentSelectorProps) {
+  if (!showControls) return null;
+
   return (
-    <div className="space-y-6">
+    <div className="space-y-8 max-w-3xl mx-auto mt-12">
       <div>
-        <h3 className="text-lg font-medium text-gray-900 mb-4">Select Learning Intent</h3>
+        <h3 className="text-xl font-semibold text-gray-900 mb-6 text-center">Select Learning Intent</h3>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
           <button
             onClick={() => onIntentChange('exam_prep')}
-            className={`flex items-center justify-center px-4 py-3 border rounded-lg ${
+            className={`flex items-center justify-center px-6 py-4 border-2 rounded-xl transition-all duration-200 ${
               selectedIntent === 'exam_prep'
-                ? 'border-blue-500 bg-blue-50 text-blue-700'
-                : 'border-gray-200 hover:bg-gray-50'
+                ? 'border-blue-500 bg-blue-50 text-blue-700 shadow-sm'
+                : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
             }`}
           >
-            <GraduationCap className="w-5 h-5 mr-2" />
-            Exam Prep
+            <GraduationCap className="w-6 h-6 mr-3" />
+            <span className="font-medium">Exam Prep</span>
           </button>
           <button
             onClick={() => onIntentChange('research')}
-            className={`flex items-center justify-center px-4 py-3 border rounded-lg ${
+            className={`flex items-center justify-center px-6 py-4 border-2 rounded-xl transition-all duration-200 ${
               selectedIntent === 'research'
-                ? 'border-blue-500 bg-blue-50 text-blue-700'
-                : 'border-gray-200 hover:bg-gray-50'
+                ? 'border-blue-500 bg-blue-50 text-blue-700 shadow-sm'
+                : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
             }`}
           >
-            <Brain className="w-5 h-5 mr-2" />
-            Research
+            <Brain className="w-6 h-6 mr-3" />
+            <span className="font-medium">Research</span>
           </button>
           <button
             onClick={() => onIntentChange('custom')}
-            className={`flex items-center justify-center px-4 py-3 border rounded-lg ${
+            className={`flex items-center justify-center px-6 py-4 border-2 rounded-xl transition-all duration-200 ${
               selectedIntent === 'custom'
-                ? 'border-blue-500 bg-blue-50 text-blue-700'
-                : 'border-gray-200 hover:bg-gray-50'
+                ? 'border-blue-500 bg-blue-50 text-blue-700 shadow-sm'
+                : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
             }`}
           >
-            <Settings className="w-5 h-5 mr-2" />
-            Custom
+            <Settings className="w-6 h-6 mr-3" />
+            <span className="font-medium">Custom</span>
           </button>
         </div>
       </div>
 
       {selectedIntent === 'exam_prep' && (
         <div>
-          <h3 className="text-lg font-medium text-gray-900 mb-4">Exam Prep Style</h3>
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+          <h3 className="text-xl font-semibold text-gray-900 mb-6 text-center">Exam Prep Style</h3>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
             <button
               onClick={() => onExamStyleChange('simple')}
-              className={`px-4 py-2 border rounded-lg ${
+              className={`px-6 py-4 border-2 rounded-xl transition-all duration-200 ${
                 examStyle === 'simple'
-                  ? 'border-blue-500 bg-blue-50 text-blue-700'
-                  : 'border-gray-200 hover:bg-gray-50'
+                  ? 'border-blue-500 bg-blue-50 text-blue-700 shadow-sm'
+                  : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
               }`}
             >
-              Simple & Concise
+              <p className="font-medium">Simple & Concise</p>
+              <p className="text-sm text-gray-500 mt-2">Quick, memorable points</p>
             </button>
             <button
               onClick={() => onExamStyleChange('detailed')}
-              className={`px-4 py-2 border rounded-lg ${
+              className={`px-6 py-4 border-2 rounded-xl transition-all duration-200 ${
                 examStyle === 'detailed'
-                  ? 'border-blue-500 bg-blue-50 text-blue-700'
-                  : 'border-gray-200 hover:bg-gray-50'
+                  ? 'border-blue-500 bg-blue-50 text-blue-700 shadow-sm'
+                  : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
               }`}
             >
-              Detailed
+              <p className="font-medium">Detailed</p>
+              <p className="text-sm text-gray-500 mt-2">Comprehensive coverage</p>
             </button>
             <button
               onClick={() => onExamStyleChange('deep_dive')}
-              className={`px-4 py-2 border rounded-lg ${
+              className={`px-6 py-4 border-2 rounded-xl transition-all duration-200 ${
                 examStyle === 'deep_dive'
-                  ? 'border-blue-500 bg-blue-50 text-blue-700'
-                  : 'border-gray-200 hover:bg-gray-50'
+                  ? 'border-blue-500 bg-blue-50 text-blue-700 shadow-sm'
+                  : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
               }`}
             >
-              Deep Dive
+              <p className="font-medium">Deep Dive</p>
+              <p className="text-sm text-gray-500 mt-2">Expert-level analysis</p>
             </button>
           </div>
         </div>
@@ -104,27 +111,29 @@ export default function IntentSelector({
 
       {selectedIntent === 'research' && (
         <div>
-          <h3 className="text-lg font-medium text-gray-900 mb-4">Research Style</h3>
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <h3 className="text-xl font-semibold text-gray-900 mb-6 text-center">Research Style</h3>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <button
               onClick={() => onResearchStyleChange('simple')}
-              className={`px-4 py-2 border rounded-lg ${
+              className={`px-6 py-4 border-2 rounded-xl transition-all duration-200 ${
                 researchStyle === 'simple'
-                  ? 'border-blue-500 bg-blue-50 text-blue-700'
-                  : 'border-gray-200 hover:bg-gray-50'
+                  ? 'border-blue-500 bg-blue-50 text-blue-700 shadow-sm'
+                  : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
               }`}
             >
-              Simple & Easy
+              <p className="font-medium">Simple & Easy</p>
+              <p className="text-sm text-gray-500 mt-2">Clear research summary</p>
             </button>
             <button
               onClick={() => onResearchStyleChange('comprehensive')}
-              className={`px-4 py-2 border rounded-lg ${
+              className={`px-6 py-4 border-2 rounded-xl transition-all duration-200 ${
                 researchStyle === 'comprehensive'
-                  ? 'border-blue-500 bg-blue-50 text-blue-700'
-                  : 'border-gray-200 hover:bg-gray-50'
+                  ? 'border-blue-500 bg-blue-50 text-blue-700 shadow-sm'
+                  : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
               }`}
             >
-              Deep Dive & Comprehensive
+              <p className="font-medium">Deep Dive & Comprehensive</p>
+              <p className="text-sm text-gray-500 mt-2">Detailed analysis</p>
             </button>
           </div>
         </div>
@@ -132,12 +141,12 @@ export default function IntentSelector({
 
       {selectedIntent === 'custom' && (
         <div>
-          <h3 className="text-lg font-medium text-gray-900 mb-4">Custom Instructions</h3>
+          <h3 className="text-xl font-semibold text-gray-900 mb-6 text-center">Custom Instructions</h3>
           <textarea
             value={customPrompt}
             onChange={(e) => onCustomPromptChange(e.target.value)}
             placeholder="Enter your custom instructions for the AI..."
-            className="w-full h-32 px-4 py-2 border rounded-lg resize-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            className="w-full h-32 px-4 py-3 border-2 rounded-xl resize-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
           />
         </div>
       )}

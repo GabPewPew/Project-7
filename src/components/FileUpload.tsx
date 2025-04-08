@@ -60,37 +60,42 @@ export default function FileUpload({ onFilesChange }: FileUploadProps) {
   });
 
   return (
-    <div className="w-full max-w-2xl mx-auto">
+    <div className="w-full max-w-3xl mx-auto">
       {error && (
         <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg text-red-700">
           {error}
         </div>
       )}
       
-      <div
-        {...getRootProps()}
-        className={`border-2 border-dashed rounded-lg p-8 text-center cursor-pointer transition-colors
-          ${isDragActive ? 'border-blue-500 bg-blue-50' : 'border-gray-300 hover:border-gray-400'}`}
-      >
-        <input {...getInputProps()} />
-        <Upload className="w-12 h-12 mx-auto mb-4 text-gray-400" />
-        <p className="text-lg mb-2">Drag & drop up to 3 files here</p>
-        <p className="text-sm text-gray-500">
-          Supported formats: PDF, Audio (MP3, WAV), Video (MP4, MOV), Text files
-        </p>
-      </div>
-
-      {metadata.length > 0 && (
-        <div className="mt-6 space-y-4">
+      {files.length === 0 ? (
+        <div
+          {...getRootProps()}
+          className={`border-3 border-dashed rounded-xl p-12 text-center cursor-pointer transition-all duration-200
+            ${isDragActive 
+              ? 'border-blue-500 bg-blue-50 scale-102' 
+              : 'border-gray-300 hover:border-gray-400 hover:bg-gray-50'
+            }`}
+        >
+          <input {...getInputProps()} />
+          <Upload className="w-16 h-16 mx-auto mb-6 text-gray-400" />
+          <p className="text-xl font-medium mb-2">Drag & drop up to 3 files here</p>
+          <p className="text-sm text-gray-500">
+            Supported formats: PDF, Audio (MP3, WAV), Video (MP4, MOV), Text files
+          </p>
+        </div>
+      ) : (
+        <div className="space-y-4">
           {metadata.map((file, index) => (
             <div
               key={index}
-              className="flex items-center justify-between p-4 bg-white rounded-lg shadow"
+              className="flex items-center justify-between p-4 bg-white rounded-xl shadow-sm border border-gray-100 transition-all hover:shadow-md"
             >
-              <div className="flex items-center space-x-3">
-                <FileIcon className="w-6 h-6 text-blue-500" />
+              <div className="flex items-center space-x-4">
+                <div className="p-2 bg-blue-50 rounded-lg">
+                  <FileIcon className="w-6 h-6 text-blue-500" />
+                </div>
                 <div>
-                  <p className="font-medium">{file.fileName}</p>
+                  <p className="font-medium text-gray-900">{file.fileName}</p>
                   <p className="text-sm text-gray-500">
                     {file.size} MB • {file.fileType.toUpperCase()}
                   </p>
@@ -98,7 +103,8 @@ export default function FileUpload({ onFilesChange }: FileUploadProps) {
               </div>
               <button
                 onClick={() => removeFile(index)}
-                className="p-1 hover:bg-gray-100 rounded-full"
+                className="p-2 hover:bg-gray-100 rounded-full transition-colors"
+                aria-label="Remove file"
               >
                 <X className="w-5 h-5 text-gray-500" />
               </button>
