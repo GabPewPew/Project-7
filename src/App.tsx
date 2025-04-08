@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { BookOpen } from 'lucide-react';
+import Layout from './components/Layout';
 import FileUpload from './components/FileUpload';
 import IntentSelector from './components/IntentSelector';
-import NotesEditor from './components/NotesEditor';
 import { FileMetadata } from './lib/detectFileTypes';
 import { processPDF } from './lib/pdfProcessor';
 import { transcribeMedia } from './lib/transcribeMedia';
@@ -37,13 +37,41 @@ function App() {
     }
   }, []);
 
+  // Check if all files are processed and reset UI if needed
+  useEffect(() => {
+    if (fileStatuses.length > 0) {
+      const allDone = fileStatuses.every(status => 
+        status.status === 'done' || status.status === 'error'
+      );
+
+      if (allDone) {
+        console.log('🔄 All files processed, resetting upload interface...');
+        resetUploadInterface();
+      }
+    }
+  }, [fileStatuses]);
+
+  const resetUploadInterface = () => {
+    setFiles([]);
+    setFileMetadata([]);
+    setFileStatuses([]);
+    setResults([]);
+    setProcessing(false);
+    setError(null);
+    
+    // Reset intent selectors to defaults
+    setSelectedIntent('exam_prep');
+    setExamStyle('simple');
+    setResearchStyle('simple');
+    setCustomPrompt('');
+    setDetailLevel(2);
+  };
+
   const handleFilesChange = (newFiles: File[], metadata: FileMetadata[]) => {
     setFiles(newFiles);
     setFileMetadata(metadata);
     setError(null);
     setResults([]);
-    setCurrentNoteId(null);
-    setSavedNotes({});
     
     // Initialize file statuses with unique IDs
     const newFileStatuses = metadata.map(meta => ({
@@ -199,155 +227,132 @@ function App() {
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An error occurred');
-    } finally {
-      setProcessing(false);
     }
   };
 
-  const handleNotesChange = (newNotes: string) => {
-    if (currentNoteId && savedNotes[currentNoteId]) {
-      setSavedNotes(prev => ({
-        ...prev,
-        [currentNoteId]: {
-          ...prev[currentNoteId],
-          content: newNotes
-        }
-      }));
-    }
+  const handleHomeClick = () => {
+    setCurrentNoteId(null);
   };
 
-  const handleExport = async (format: 'pdf' | 'docx') => {
-    // TODO: Implement export functionality
-    console.log(`Exporting as ${format}...`);
+  const handleDeleteNote = (noteId: string) => {
+    setSavedNotes(prev => {
+      const { [noteId]: deleted, ...rest } = prev;
+      if (currentNoteId === noteId) {
+        setCurrentNoteId(null);
+      }
+      return rest;
+    });
   };
+
+  // Render home page content
+  const renderHomePage = () => (
+    <>
+      <div className="text-center mb-12">
+        <div className="flex items-center justify-center mb-4">
+          <BookOpen className="w-12 h-12 text-blue-600" />
+        </div>
+        <h1 className="text-4xl font-bold text-gray-900 mb-4">
+          AI Learning Notes Generator
+        </h1>
+        <p className="text-lg text-gray-600 max-w-2xl mx-auto">
+          Upload your PDFs, audio, or video files and let AI transform them into
+          structured learning notes. Perfect for studying, research, or quick content digestion.
+        </p>
+      </div>
+
+      <FileUpload onFilesChange={handleFilesChange} />
+
+      {error && (
+        <div className="mt-4 p-4 bg-red-50 border border-red-200 rounded-lg text-red-700">
+          {error}
+        </div>
+      )}
+
+      {files.length > 0 && (
+        <div className="mt-8 space-y-6">
+          <IntentSelector
+            selectedIntent={selectedIntent}
+            examStyle={examStyle}
+            researchStyle={researchStyle}
+            customPrompt={customPrompt}
+            onIntentChange={setSelectedIntent}
+            onExamStyleChange={setExamStyle}
+            onResearchStyleChange={setResearchStyle}
+            onCustomPromptChange={setCustomPrompt}
+            showControls={!processing}
+          />
+
+          <div className="text-center">
+            <button
+              onClick={handleGenerateNotes}
+              disabled={processing}
+              className="bg-blue-600 text-white px-6 py-3 rounded-lg font-medium hover:bg-blue-700 
+                transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed"
+            >
+              {processing ? 'Processing...' : 'Generate Notes'}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* File Status List */}
+      {fileStatuses.length > 0 && (
+        <div className="mt-8">
+          <h2 className="text-xl font-semibold mb-4">Processing Status</h2>
+          <div className="space-y-2">
+            {fileStatuses.map(status => (
+              <div
+                key={status.id}
+                className={`p-4 rounded-lg border ${
+                  status.status === 'done'
+                    ? 'bg-green-50 border-green-200'
+                    : status.status === 'error'
+                    ? 'bg-red-50 border-red-200'
+                    : status.status === 'generating'
+                    ? 'bg-blue-50 border-blue-200'
+                    : 'bg-gray-50 border-gray-200'
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <span className="font-medium">{status.fileName}</span>
+                  <span className="text-sm">
+                    {status.status === 'done' && '✅ Complete'}
+                    {status.status === 'generating' && '🔄 Generating...'}
+                    {status.status === 'error' && '❌ Error'}
+                    {status.status === 'idle' && '⏳ Waiting'}
+                  </span>
+                </div>
+                {status.error && (
+                  <p className="text-sm text-red-600 mt-2">{status.error}</p>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </>
+  );
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <div className="max-w-7xl mx-auto px-4 py-12">
-        <div className="text-center mb-12">
-          <div className="flex items-center justify-center mb-4">
-            <BookOpen className="w-12 h-12 text-blue-600" />
-          </div>
-          <h1 className="text-4xl font-bold text-gray-900 mb-4">
-            AI Learning Notes Generator
-          </h1>
-          <p className="text-lg text-gray-600 max-w-2xl mx-auto">
-            Upload your PDFs, audio, or video files and let AI transform them into
-            structured learning notes. Perfect for studying, research, or quick content digestion.
-          </p>
+    <Layout
+      savedNotes={savedNotes}
+      currentNoteId={currentNoteId}
+      onNoteSelect={setCurrentNoteId}
+      onDeleteNote={handleDeleteNote}
+      onHomeClick={handleHomeClick}
+      fileStatuses={fileStatuses}
+    >
+      {currentNoteId && savedNotes[currentNoteId] ? (
+        <div className="p-4">
+          <h2 className="text-lg font-semibold mb-2">Generated Notes</h2>
+          <pre className="whitespace-pre-wrap font-mono text-sm bg-white p-4 rounded shadow">
+            {savedNotes[currentNoteId].content}
+          </pre>
         </div>
-
-        <FileUpload onFilesChange={handleFilesChange} />
-
-        {error && (
-          <div className="mt-4 p-4 bg-red-50 border border-red-200 rounded-lg text-red-700">
-            {error}
-          </div>
-        )}
-
-        {files.length > 0 && (
-          <div className="mt-8 space-y-6">
-            <IntentSelector
-              selectedIntent={selectedIntent}
-              examStyle={examStyle}
-              researchStyle={researchStyle}
-              customPrompt={customPrompt}
-              onIntentChange={setSelectedIntent}
-              onExamStyleChange={setExamStyle}
-              onResearchStyleChange={setResearchStyle}
-              onCustomPromptChange={setCustomPrompt}
-              showControls={!processing}
-            />
-
-            <div className="text-center">
-              <button
-                onClick={handleGenerateNotes}
-                disabled={processing}
-                className="bg-blue-600 text-white px-6 py-3 rounded-lg font-medium hover:bg-blue-700 
-                  transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed"
-              >
-                {processing ? 'Processing...' : 'Generate Notes'}
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* File Status List */}
-        {fileStatuses.length > 0 && (
-          <div className="mt-8">
-            <h2 className="text-xl font-semibold mb-4">Processing Status</h2>
-            <div className="space-y-2">
-              {fileStatuses.map(status => (
-                <div
-                  key={status.id}
-                  className={`p-4 rounded-lg border ${
-                    status.status === 'done'
-                      ? 'bg-green-50 border-green-200'
-                      : status.status === 'error'
-                      ? 'bg-red-50 border-red-200'
-                      : status.status === 'generating'
-                      ? 'bg-blue-50 border-blue-200'
-                      : 'bg-gray-50 border-gray-200'
-                  }`}
-                >
-                  <div className="flex items-center justify-between">
-                    <span className="font-medium">{status.fileName}</span>
-                    <span className="text-sm">
-                      {status.status === 'done' && '✅ Complete'}
-                      {status.status === 'generating' && '🔄 Generating...'}
-                      {status.status === 'error' && '❌ Error'}
-                      {status.status === 'idle' && '⏳ Waiting'}
-                    </span>
-                  </div>
-                  {status.error && (
-                    <p className="text-sm text-red-600 mt-2">{status.error}</p>
-                  )}
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* Notes List */}
-        {Object.keys(savedNotes).length > 0 && (
-          <div className="mt-8">
-            <h2 className="text-xl font-semibold mb-4">Generated Notes</h2>
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              {Object.values(savedNotes).map(note => (
-                <button
-                  key={note.id}
-                  onClick={() => setCurrentNoteId(note.id)}
-                  className={`p-4 rounded-lg border text-left transition-all ${
-                    currentNoteId === note.id
-                      ? 'bg-blue-50 border-blue-300 ring-2 ring-blue-300'
-                      : 'bg-white border-gray-200 hover:bg-gray-50'
-                  }`}
-                >
-                  <h3 className="font-medium text-gray-900">{note.fileName}</h3>
-                  <p className="text-sm text-gray-500 mt-1">
-                    {new Date(note.timestamp).toLocaleString()}
-                  </p>
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* Current Note Editor */}
-        {currentNoteId && savedNotes[currentNoteId] && (
-          <div className="mt-8">
-            <NotesEditor
-              key={currentNoteId}
-              noteId={currentNoteId}
-              notes={savedNotes[currentNoteId].content}
-              onNotesChange={handleNotesChange}
-              onExport={handleExport}
-              isLoading={false}
-            />
-          </div>
-        )}
-      </div>
-    </div>
+      ) : (
+        renderHomePage()
+      )}
+    </Layout>
   );
 }
 
