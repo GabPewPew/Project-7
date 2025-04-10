@@ -7,7 +7,7 @@ interface FileUploadProps {
   onFilesChange: (files: File[], metadata: FileMetadata[]) => void;
 }
 
-export default function FileUpload({ onFilesChange }: FileUploadProps) {
+export function FileUpload({ onFilesChange }: FileUploadProps) {
   const [files, setFiles] = useState<File[]>([]);
   const [metadata, setMetadata] = useState<FileMetadata[]>([]);
   const [error, setError] = useState<string | null>(null);

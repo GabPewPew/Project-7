@@ -17,7 +17,7 @@ export interface SimilarityScore {
 }
 
 export interface ContentGroup {
-  groupId: string;
+  groupId?: string;
   groupTitle: string;
   primary: string;
   secondary?: string;
@@ -58,13 +58,30 @@ export interface MarkdownRendererProps {
   className?: string;
 }
 
+export interface NoteVersion {
+  version: number;
+  content: string;
+  rawData: string;
+  updatedAt: number;
+}
+
 export interface SavedNote {
   id: string;
-  content: string;
-  fileName: string;
-  timestamp: number;
-  primary: string;
-  secondary?: string;
+  noteId: string;
+  title: string;
+  createdAt: number;
+  updatedAt: number;
+  status: 'draft' | 'complete';
+  tags: {
+    primary: string;
+    secondary?: string;
+  };
+  current: NoteVersion;
+  history: NoteVersion[]; // max 2 old versions to total 3
+  files: {
+    fileName: string;
+    fileUrl?: string;
+  }[];
 }
 
 export interface FileStatus {
@@ -72,4 +89,29 @@ export interface FileStatus {
   fileName: string;
   status: 'idle' | 'generating' | 'done' | 'error';
   error?: string;
+}
+
+export interface NoteMetadata {
+  noteId: string;
+  title: string;
+  createdAt: number;
+  updatedAt: number;
+  status: 'draft' | 'complete';
+  tags: {
+    primary: string;
+    secondary?: string;
+  };
+  version: number;
+  writeInProgress: boolean;
+}
+
+export interface NoteAuditEntry {
+  timestamp: number;
+  action: 'create' | 'rename' | 'update' | 'delete';
+  details: {
+    previousTitle?: string;
+    newTitle?: string;
+    previousVersion?: number;
+    newVersion?: number;
+  };
 }

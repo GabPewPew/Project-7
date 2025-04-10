@@ -14,7 +14,7 @@ interface IntentSelectorProps {
   showControls: boolean;
 }
 
-export default function IntentSelector({
+export function IntentSelector({
   selectedIntent,
   examStyle,
   researchStyle,
