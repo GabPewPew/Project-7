@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Save, Download, BookOpen } from 'lucide-react';
+import { Save, Download, Sparkles } from 'lucide-react';
 import { Layout } from './components/Layout';
 import { FileUpload } from './components/FileUpload';
 import { IntentSelector } from './components/IntentSelector';
@@ -51,6 +51,20 @@ function App() {
     setSavedNotes(notes);
   }, []);
 
+  const resetHomeState = () => {
+    setFiles([]);
+    setFileMetadata([]);
+    setFileStatuses([]);
+    setError(null);
+    setProcessing(false);
+    setSelectedIntent('exam_prep');
+    setExamStyle('simple');
+    setResearchStyle('simple');
+    setCustomPrompt('');
+    setDetailLevel(2);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
   const handleNoteSelect = (noteId: string) => {
     setCurrentNoteId(noteId);
     setCurrentView('note');
@@ -82,10 +96,12 @@ function App() {
         setCurrentNoteId(null);
         setCurrentView('home');
         setHasUnsavedChanges(false);
+        resetHomeState();
       }
     } else {
       setCurrentNoteId(null);
       setCurrentView('home');
+      resetHomeState();
     }
   };
 
@@ -301,6 +317,7 @@ function App() {
       setShowTitlePrompt(false);
       setPendingNote(null);
       setHasUnsavedChanges(false);
+      resetHomeState();
     } catch (error) {
       console.error('Failed to save note:', error);
       setError('Failed to save note');
@@ -335,10 +352,10 @@ function App() {
             <div className="max-w-2xl w-full">
               <div className="text-center mb-8">
                 <div className="flex items-center justify-center mb-4">
-                  <BookOpen className="w-12 h-12 text-blue-600" />
+                  <Sparkles className="w-12 h-12 text-blue-600" />
                 </div>
                 <h1 className="text-4xl font-bold text-gray-900 mb-4">
-                  AI Learning Notes Generator
+                  7P
                 </h1>
                 <p className="text-lg text-gray-600">
                   Upload your PDFs, audio, or video files and let AI transform them into

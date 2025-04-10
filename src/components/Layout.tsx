@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Menu } from 'lucide-react';
+import { Menu, Sparkles } from 'lucide-react';
 import { Sidebar } from './Sidebar';
 import { SavedNote, FileStatus } from '../types';
 
@@ -30,15 +30,21 @@ export function Layout({
 
   return (
     <div className="flex h-screen bg-gray-50">
-      <button
-        type="button"
-        className="fixed top-4 left-4 z-50 p-2 rounded-lg bg-white shadow-md hover:bg-gray-50 
-          transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
-        onClick={() => setIsSidebarOpen(!isSidebarOpen)}
-      >
-        <Menu className="h-6 w-6 text-gray-700" />
-        <span className="sr-only">Toggle navigation</span>
-      </button>
+      <div className="fixed top-4 left-4 z-50 flex items-center gap-2">
+        <button
+          type="button"
+          className="p-2 rounded-lg bg-white shadow-md hover:bg-gray-50 
+            transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          onClick={() => setIsSidebarOpen(!isSidebarOpen)}
+        >
+          <Menu className="h-6 w-6 text-gray-700" />
+          <span className="sr-only">Toggle navigation</span>
+        </button>
+        <div className="flex items-center gap-2 px-3 py-2 bg-white rounded-lg shadow-md">
+          <Sparkles className="h-5 w-5 text-blue-600" />
+          <span className="font-medium text-gray-900">7P</span>
+        </div>
+      </div>
 
       {isSidebarOpen && (
         <div 
@@ -65,5 +71,3 @@ export function Layout({
     </div>
   );
 }
-
-export default Layout
