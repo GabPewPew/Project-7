@@ -1,6 +1,6 @@
 import express from 'express';
 import cors from 'cors';
-import axios from 'axios'; // ✅ for Gemini REST calls
+import axios from 'axios';
 import { TextToSpeechClient } from '@google-cloud/text-to-speech';
 import { promises as fs } from 'fs';
 import path from 'path';
@@ -17,6 +17,16 @@ const __dirname = path.dirname(__filename);
 const app = express();
 const port = process.env.PORT || 3000;
 
+// Increase payload limits for large PDFs
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ extended: true, limit: '50mb' }));
+
+// Configure CORS with increased timeout
+app.use(cors({
+  methods: ['GET', 'POST', 'OPTIONS'],
+  maxAge: 600, // Increase preflight cache to 10 minutes
+}));
+
 // Hardcode the path to credentials so TTS definitely finds them
 const ttsClient = new TextToSpeechClient({
   keyFilename: path.join(__dirname, 'google-credentials.json'),
@@ -29,8 +39,6 @@ const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 const CONCISE_PROMPT = `Act as a highly experienced and approachable university professor who is teaching this topic to students for the first time...`;
 const DETAILED_PROMPT = `Act as a senior university professor or experienced lecturer who is highly skilled in teaching this subject to students...`;
 
-app.use(cors());
-app.use(express.json());
 app.use(express.static(path.join(__dirname, '..', 'public')));
 
 /** Ensure the top-level audio folder exists. */
@@ -70,7 +78,9 @@ ${content}
         headers: {
           'Content-Type': 'application/json',
           'X-Goog-Api-Key': GEMINI_API_KEY
-        }
+        },
+        // Add timeout for large requests
+        timeout: 60000 // 60 second timeout
       }
     );
 
