@@ -1,128 +1,102 @@
 import express from 'express';
 import cors from 'cors';
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import axios from 'axios'; // ✅ for Gemini REST calls
 import { TextToSpeechClient } from '@google-cloud/text-to-speech';
 import { promises as fs } from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import dotenv from 'dotenv';
 
-// Load environment variables
+// Load .env
 dotenv.config();
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
+// Resolve __dirname for ES Modules
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const app = express();
 const port = process.env.PORT || 3000;
 
-// Ensure audio directory exists
-await fs.mkdir(path.join(__dirname, '..', 'public', 'audio'), { recursive: true });
+// Hardcode the path to credentials so TTS definitely finds them
+const ttsClient = new TextToSpeechClient({
+  keyFilename: path.join(__dirname, 'google-credentials.json'),
+});
+
+// Pull your Gemini API key from .env
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
+
+// Example Prompts
+const CONCISE_PROMPT = `Act as a highly experienced and approachable university professor who is teaching this topic to students for the first time...`;
+const DETAILED_PROMPT = `Act as a senior university professor or experienced lecturer who is highly skilled in teaching this subject to students...`;
 
 app.use(cors());
 app.use(express.json());
 app.use(express.static(path.join(__dirname, '..', 'public')));
 
-// Initialize Gemini and TTS clients
-const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
-const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
-const ttsClient = new TextToSpeechClient({
-  keyFilename: process.env.GOOGLE_APPLICATION_CREDENTIALS
-});
+/** Ensure the top-level audio folder exists. */
+async function ensureAudioFolder() {
+  const audioPath = path.join(__dirname, '..', 'public', 'audio');
+  await fs.mkdir(audioPath, { recursive: true });
+}
 
-const CONCISE_PROMPT = `Act as a highly experienced and approachable university professor who is teaching this topic to students for the first time. Based on the provided original source materials and structured AI-generated notes, write a concise and engaging lecture script with the goal of introducing key concepts quickly and clearly.
-
-Your job is to guide the student through the topic as if speaking to a live class.
-
-Use a warm, conversational tone that mimics natural spoken English. Include natural elements like:
-- Light filler phrases ("uh", "so", "you know", "let me think")
-- Spoken hesitations or rephrasing ("what I mean is…", "or you could say…")
-- Soft transitions like:
-  - "Okay, next we're going to look at…"
-  - "Let's move on to something really important…"
-  - "A quick recap before we continue…"
-
-Structure the script as follows:
-1. A quick 1–2 sentence overview of what the student is about to learn
-2. A simplified breakdown of 3–5 core ideas or definitions
-3. Brief examples or analogies where helpful (but no long stories)
-4. A short recap of what was covered and why it matters
-
-Make sure to:
-- Emphasize important terms
-- Keep sentences short and natural
-- Avoid academic jargon or verbatim quoting
-- Stay under ~10 minutes (~1000–1300 words)
-
-End with a friendly sign-off:
-- "That's a quick intro to this topic – feel free to come back and review anytime."
-- "Next time, we'll dive a little deeper into…"`;
-
-const DETAILED_PROMPT = `Act as a senior university professor or experienced lecturer who is highly skilled in teaching this subject to students with an intermediate level of understanding. Using the provided original source materials and structured AI-generated notes, write a detailed and immersive lecture script that could be delivered in a 30–40 minute university classroom setting.
-
-Your lecture should:
-1. Begin with a comprehensive overview of the topic
-2. Break down complex concepts into digestible segments
-3. Provide detailed explanations with real-world examples
-4. Include relevant case studies or research findings
-5. Connect concepts to broader themes in the field
-6. End with a thorough summary and preview of related topics
-
-Use a professional but engaging tone that:
-- Maintains academic rigor while being accessible
-- Includes natural speech patterns and transitions
-- Encourages critical thinking and deeper understanding
-- Addresses potential questions or misconceptions
-
-Aim for approximately 4000-5000 words, structured with clear sections and natural breaks.`;
-
+/**
+ * Generate a lecture script from the Gemini API (REST approach).
+ */
 async function generateLectureScript(content, style) {
-  try {
-    // Try with the latest model first
-    let model = genAI.getGenerativeModel({ model: 'gemini-1.5-pro-latest' });
-    
-    const prompt = `${style === 'concise' ? CONCISE_PROMPT : DETAILED_PROMPT}
+  // Pick the correct prompt
+  const finalPrompt = `
+${style === 'concise' ? CONCISE_PROMPT : DETAILED_PROMPT}
 
 Content to convert into a lecture:
-${content}`;
+${content}
+  `;
 
-    try {
-      const result = await model.generateContent(prompt);
-      const response = await result.response;
-      const script = response.text();
+  try {
+    // Make direct HTTP POST to the Gemini v1beta API with gemini-1.5-pro
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent`;
 
-      if (!script || typeof script !== 'string') {
-        throw new Error('Empty response from Gemini');
+    const response = await axios.post(
+      url,
+      {
+        contents: [
+          {
+            parts: [
+              { text: finalPrompt }
+            ]
+          }
+        ]
+      },
+      {
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Goog-Api-Key': GEMINI_API_KEY
+        }
       }
-
-      return script;
-    } catch (error) {
-      console.warn('Failed to use gemini-1.5-pro-latest, falling back to gemini-pro:', error);
-      
-      model = genAI.getGenerativeModel({ model: 'gemini-pro' });
-      const fallbackResult = await model.generateContent(prompt);
-      const fallbackResponse = await fallbackResult.response;
-      const fallbackScript = fallbackResponse.text();
-
-      if (!fallbackScript || typeof fallbackScript !== 'string') {
-        throw new Error('Empty response from Gemini fallback model');
-      }
-
-      return fallbackScript;
-    }
-  } catch (error) {
-    console.error('Failed to generate lecture script:', error);
-    throw new Error(
-      error instanceof Error 
-        ? `Failed to generate lecture script: ${error.message}`
-        : 'Failed to generate lecture script: Unknown error'
     );
+
+    // Typically returns candidates[].content.parts[].text
+    const candidate = response.data?.candidates?.[0]?.content;
+    const text = candidate?.parts?.[0]?.text;
+
+    if (!text || typeof text !== 'string') {
+      throw new Error('Gemini returned an empty or invalid response');
+    }
+
+    return text;
+  } catch (err) {
+    console.error('[Gemini Error]', err.response?.data || err.message);
+    throw new Error(`Gemini API error: ${err.message}`);
   }
 }
 
-async function textToSpeech(text, voice, userId, noteId, normalizedTitle, style) {
+/**
+ * Convert the lecture script to audio via Google TTS,
+ * then save it in /public/audio/{userId}/{noteId}/audio-{style}.mp3
+ */
+async function textToSpeech(script, voice, userId, noteId, normalizedTitle, style) {
   try {
     const request = {
-      input: { text },
+      input: { text: script },
       voice: {
         languageCode: 'en-US',
         name: voice,
@@ -136,60 +110,67 @@ async function textToSpeech(text, voice, userId, noteId, normalizedTitle, style)
 
     const [response] = await ttsClient.synthesizeSpeech(request);
     if (!response.audioContent) {
-      throw new Error('No audio content generated');
+      throw new Error('No audio content generated by TTS');
     }
 
+    // Create user/note directories
     const baseDir = path.join(__dirname, '..', 'public', 'audio', userId, noteId);
     await fs.mkdir(baseDir, { recursive: true });
 
-    const audioPath = path.join(baseDir, `audio-${style}.mp3`);
-    await fs.writeFile(audioPath, response.audioContent);
+    // Save the MP3
+    const audioFile = path.join(baseDir, `audio-${style}.mp3`);
+    await fs.writeFile(audioFile, response.audioContent);
 
-    // Clean up old files (keep max 5 per user)
+    // Keep only 5 note folders per user
     const userDir = path.join(__dirname, '..', 'public', 'audio', userId);
-    const noteDirs = await fs.readdir(userDir);
-    
-    if (noteDirs.length > 5) {
-      const dirStats = await Promise.all(
-        noteDirs.map(async (dir) => {
-          const fullPath = path.join(userDir, dir);
-          const stat = await fs.stat(fullPath);
-          return { dir, stat };
+    const dirs = await fs.readdir(userDir);
+    if (dirs.length > 5) {
+      const stats = await Promise.all(
+        dirs.map(async (dir) => {
+          const stat = await fs.stat(path.join(userDir, dir));
+          return { dir, mtime: stat.mtime.getTime() };
         })
       );
-      
-      const oldestDirs = dirStats
-        .sort((a, b) => a.stat.mtime.getTime() - b.stat.mtime.getTime())
-        .slice(0, dirStats.length - 5);
-
-      for (const { dir } of oldestDirs) {
-        const fullPath = path.join(userDir, dir);
-        await fs.rm(fullPath, { recursive: true, force: true });
-        console.log(`Cleaned up old audio directory: ${fullPath}`);
+      const toDelete = stats.sort((a, b) => a.mtime - b.mtime).slice(0, dirs.length - 5);
+      for (const { dir } of toDelete) {
+        await fs.rm(path.join(userDir, dir), { recursive: true, force: true });
+        console.log(`🧹 Deleted old audio folder: ${dir}`);
       }
     }
 
     return `/audio/${userId}/${noteId}/audio-${style}.mp3`;
-  } catch (error) {
-    console.error('Failed to generate audio:', error);
-    throw new Error('Failed to generate audio');
+  } catch (err) {
+    console.error('[TTS Error]', err);
+    throw new Error(`TTS error: ${err.message}`);
   }
 }
 
+/**
+ * POST /api/generate-audio
+ * Takes userId, noteId, style, noteContent, rawText, etc.
+ * 1. Generate script from Gemini
+ * 2. Convert to audio via TTS
+ * 3. Return audio file URL + script
+ */
 app.post('/api/generate-audio', async (req, res) => {
   try {
     const { userId, noteId, normalizedTitle, style, noteContent, rawText } = req.body;
     const voice = 'en-US-Studio-O';
 
+    // Basic validation
     if (!userId || !noteId || !normalizedTitle || !style || !noteContent) {
       return res.status(400).json({ error: 'Missing required parameters' });
     }
 
-    const fullContent = rawText 
+    // Combine note content + raw text for the final prompt
+    const fullContent = rawText
       ? `${noteContent}\n\nOriginal Source Material:\n${rawText}`
       : noteContent;
 
+    // 1) Gemini script
     const script = await generateLectureScript(fullContent, style);
+
+    // 2) Convert to audio
     const audioUrl = await textToSpeech(script, voice, userId, noteId, normalizedTitle, style);
 
     res.json({
@@ -197,31 +178,30 @@ app.post('/api/generate-audio', async (req, res) => {
       script,
       style,
       voice,
-      generatedAt: Date.now()
+      generatedAt: Date.now(),
     });
   } catch (error) {
-    console.error('Error generating audio:', error);
-    res.status(500).json({ 
-      error: error instanceof Error ? error.message : 'Failed to generate audio'
-    });
+    console.error('Audio generation failed:', error);
+    res.status(500).json({ error: error.message || 'Failed to generate audio' });
   }
 });
 
-// Serve audio files
+/**
+ * GET /audio/:userId/:noteId/:filename
+ * Serve the static audio files
+ */
 app.get('/audio/:userId/:noteId/:filename', (req, res) => {
   const { userId, noteId, filename } = req.params;
-  const audioPath = path.join(
-    __dirname,
-    '..',
-    'public',
-    'audio',
-    userId,
-    noteId,
-    filename
-  );
-  res.sendFile(audioPath);
+  const filePath = path.join(__dirname, '..', 'public', 'audio', userId, noteId, filename);
+  res.sendFile(filePath);
 });
 
-app.listen(port, () => {
-  console.log(`Server running at http://localhost:${port}`);
-});
+/** Start the server */
+async function startServer() {
+  await ensureAudioFolder();
+  app.listen(port, () => {
+    console.log(`🚀 Server running at http://localhost:${port}`);
+  });
+}
+
+startServer();
