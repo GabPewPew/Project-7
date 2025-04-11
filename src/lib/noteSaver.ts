@@ -1,4 +1,5 @@
 import JSZip from 'jszip';
+import { AudioData } from '../types';
 
 export interface NoteMetadata {
   noteId: string;
@@ -42,6 +43,10 @@ export class NoteSaver {
       rawData: string;
       updatedAt: number;
     }>;
+    audio?: {
+      concise?: AudioData;
+      detailed?: AudioData;
+    };
   }>;
 
   constructor(userId: string) {
@@ -54,7 +59,7 @@ export class NoteSaver {
     return `notes_${this.userId}`;
   }
 
-  loadNotesFromStorage(): Record<string, SavedNote> {
+  loadNotesFromStorage(): Record<string, any> {
     try {
       const storageData = localStorage.getItem(this.getStorageKey());
       if (!storageData) {
@@ -62,7 +67,7 @@ export class NoteSaver {
       }
 
       const parsedData = JSON.parse(storageData);
-      const notes: Record<string, SavedNote> = {};
+      const notes: Record<string, any> = {};
 
       Object.entries(parsedData).forEach(([noteId, noteData]: [string, any]) => {
         if (noteData && noteData.metadata && noteData.current) {
@@ -71,7 +76,8 @@ export class NoteSaver {
             files: [], // Files can't be stored in localStorage
             metadata: noteData.metadata,
             current: noteData.current,
-            history: noteData.history || []
+            history: noteData.history || [],
+            audio: noteData.audio
           });
 
           notes[noteId] = {
@@ -84,7 +90,8 @@ export class NoteSaver {
             tags: noteData.metadata.tags,
             current: noteData.current,
             history: noteData.history || [],
-            files: noteData.files || []
+            files: noteData.files || [],
+            audio: noteData.audio
           };
         }
       });
@@ -104,7 +111,8 @@ export class NoteSaver {
           metadata: note.metadata,
           current: note.current,
           history: note.history,
-          files: note.files.map(f => ({ fileName: f.name }))
+          files: note.files.map(f => ({ fileName: f.name })),
+          audio: note.audio
         };
       });
       localStorage.setItem(this.getStorageKey(), JSON.stringify(notesData));
@@ -202,6 +210,24 @@ export class NoteSaver {
     this.saveToStorage();
   }
 
+  async saveAudio(
+    noteId: string,
+    style: 'concise' | 'detailed',
+    audioData: AudioData
+  ): Promise<void> {
+    const note = this.notes.get(noteId);
+    if (!note) {
+      throw new Error('Note not found');
+    }
+
+    if (!note.audio) {
+      note.audio = {};
+    }
+
+    note.audio[style] = audioData;
+    this.saveToStorage();
+  }
+
   async downloadNote(noteId: string): Promise<Blob> {
     const note = this.notes.get(noteId);
     if (!note) {
@@ -233,6 +259,21 @@ export class NoteSaver {
       }
     }
 
+    // Add audio files and scripts if available
+    if (note.audio) {
+      const audioFolder = zip.folder('audio');
+      if (audioFolder) {
+        if (note.audio.concise) {
+          audioFolder.file('concise/script.txt', note.audio.concise.script);
+          // Audio URL would be downloaded separately
+        }
+        if (note.audio.detailed) {
+          audioFolder.file('detailed/script.txt', note.audio.detailed.script);
+          // Audio URL would be downloaded separately
+        }
+      }
+    }
+
     // Add metadata
     zip.file('meta.json', JSON.stringify({
       ...note.metadata,
@@ -243,7 +284,8 @@ export class NoteSaver {
       history: note.history.map(v => ({
         version: v.version,
         updatedAt: v.updatedAt
-      }))
+      })),
+      audio: note.audio
     }, null, 2));
 
     return await zip.generateAsync({ type: 'blob' });

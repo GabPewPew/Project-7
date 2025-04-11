@@ -65,6 +65,14 @@ export interface NoteVersion {
   updatedAt: number;
 }
 
+export interface AudioData {
+  url: string;
+  script: string;
+  style: 'concise' | 'detailed';
+  voice: string;
+  generatedAt: number;
+}
+
 export interface SavedNote {
   id: string;
   noteId: string;
@@ -77,11 +85,15 @@ export interface SavedNote {
     secondary?: string;
   };
   current: NoteVersion;
-  history: NoteVersion[]; // max 2 old versions to total 3
+  history: NoteVersion[];
   files: {
     fileName: string;
     fileUrl?: string;
   }[];
+  audio?: {
+    concise?: AudioData;
+    detailed?: AudioData;
+  };
 }
 
 export interface FileStatus {

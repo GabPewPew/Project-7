@@ -7,13 +7,18 @@
     "dev": "vite",
     "build": "vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "server": "node server/index.js"
   },
   "dependencies": {
+    "@google/generative-ai": "^0.2.1",
+    "@google-cloud/text-to-speech": "^5.0.1",
     "@mdxeditor/editor": "^2.3.4",
     "@types/pdfjs-dist": "*",
     "@uploadthing/react": "^6.2.4",
     "axios": "^1.8.4",
+    "cors": "^2.8.5",
+    "express": "^4.18.3",
     "form-data": "^4.0.2",
     "jszip": "^3.10.1",
     "lucide-react": "^0.344.0",
@@ -21,6 +26,7 @@
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-dropzone": "^14.2.3",
+    "sonner": "^1.4.3",
     "uploadthing": "^6.4.1"
   },
   "devDependencies": {
