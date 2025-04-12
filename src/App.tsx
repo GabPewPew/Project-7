@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Save, Download, Sparkles, Volume2 } from 'lucide-react';
 import { Toaster, toast } from 'sonner';
 import { Layout } from './components/Layout';
@@ -15,9 +15,9 @@ import { generateAudio } from './lib/audioGenerator';
 import { checkForDuplicateNotes, validateContent } from './lib/contentValidation';
 import { AudioPlayer } from './components/AudioPlayer';
 import { AudioGenerateModal } from './components/AudioGenerateModal';
-import { LearningIntent, ExamPrepStyle, ResearchStyle, ProcessingResult } from './types';
+import { NoteRenderer } from './components/NoteRenderer';
+import { LearningIntent, ExamPrepStyle, ResearchStyle, ProcessingResult, SavedNote, NoteBlock } from './types';
 
-// Temporary user ID for demo - replace with actual auth
 const DEMO_USER_ID = 'demo_user';
 
 function App() {
@@ -46,7 +46,7 @@ function App() {
     files: File[];
     tags: { primary: string; secondary?: string };
   } | null>(null);
-  const [savedNotes, setSavedNotes] = useState<Record<string, any>>({});
+  const [savedNotes, setSavedNotes] = useState<Record<string, SavedNote>>({});
   const [showAudioModal, setShowAudioModal] = useState(false);
   const [isGeneratingAudio, setIsGeneratingAudio] = useState(false);
   const [currentAudioStyle, setCurrentAudioStyle] = useState<'concise' | 'detailed' | null>(null);
@@ -57,6 +57,22 @@ function App() {
     const notes = noteSaver.loadNotesFromStorage();
     setSavedNotes(notes);
   }, []);
+
+  const handleBlocksChange = useCallback(async (noteId: string, blocks: NoteBlock[]) => {
+    try {
+      const note = savedNotes[noteId];
+      if (!note) return;
+
+      await noteSaver.updateNote(noteId, note.current.content, undefined, blocks);
+      const notes = noteSaver.loadNotesFromStorage();
+      setSavedNotes(notes);
+      setHasUnsavedChanges(false);
+      toast.success('Changes saved');
+    } catch (error) {
+      console.error('Failed to save blocks:', error);
+      toast.error('Failed to save changes');
+    }
+  }, [savedNotes]);
 
   const resetHomeState = () => {
     setFiles([]);
@@ -274,9 +290,10 @@ function App() {
       const notes = noteSaver.loadNotesFromStorage();
       setSavedNotes(notes);
       setHasUnsavedChanges(false);
+      toast.success('Note saved successfully');
     } catch (error) {
       console.error('Failed to save note:', error);
-      setError('Failed to save note');
+      toast.error('Failed to save note');
     }
   };
 
@@ -294,7 +311,7 @@ function App() {
       URL.revokeObjectURL(url);
     } catch (error) {
       console.error('Failed to download files:', error);
-      setError('Failed to download files');
+      toast.error('Failed to download files');
     }
   };
 
@@ -325,9 +342,10 @@ function App() {
       setPendingNote(null);
       setHasUnsavedChanges(false);
       resetHomeState();
+      toast.success('Note saved successfully');
     } catch (error) {
       console.error('Failed to save note:', error);
-      setError('Failed to save note');
+      toast.error('Failed to save note');
     }
   };
 
@@ -384,9 +402,43 @@ function App() {
       onHomeClick={handleHomeClick}
       onAllNotesClick={handleAllNotesClick}
       fileStatuses={fileStatuses}
+      toolsContent={currentNoteId && savedNotes[currentNoteId] ? (
+        <div className="space-y-4">
+          <button
+            onClick={() => setShowAudioModal(true)}
+            disabled={isGeneratingAudio}
+            className="w-full flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <Volume2 className="w-4 h-4" />
+            Generate Audio Lecture
+          </button>
+
+          {savedNotes[currentNoteId].audio?.concise && (
+            <AudioPlayer
+              audio={savedNotes[currentNoteId].audio.concise}
+              onRegenerate={() => handleGenerateAudio('concise')}
+              isRegenerating={isGeneratingAudio && currentAudioStyle === 'concise'}
+            />
+          )}
+
+          {savedNotes[currentNoteId].audio?.detailed && (
+            <AudioPlayer
+              audio={savedNotes[currentNoteId].audio.detailed}
+              onRegenerate={() => handleGenerateAudio('detailed')}
+              isRegenerating={isGeneratingAudio && currentAudioStyle === 'detailed'}
+            />
+          )}
+        </div>
+      ) : null}
     >
-      <Toaster position="top-right" />
-      <div className="h-full p-4">
+      <Toaster 
+        position="top-right"
+        toastOptions={{
+          duration: 2000,
+          className: 'bg-white'
+        }}
+      />
+      <div className="h-full">
         {showTitlePrompt && pendingNote && (
           <TitlePrompt
             defaultTitle={pendingNote.files[0]?.name || 'New Note'}
@@ -499,71 +551,38 @@ function App() {
             onNoteSelect={handleNoteSelect}
           />
         ) : currentNoteId && savedNotes[currentNoteId] ? (
-          <div className="h-full flex">
-            <div className="flex-1 pr-4">
-              <div className="flex justify-between items-center mb-4">
-                <div>
-                  <h2 className="text-lg font-semibold">{savedNotes[currentNoteId].title}</h2>
-                  <p className="text-sm text-gray-500">
-                    Version {savedNotes[currentNoteId].current.version} • 
-                    Last edited: {new Date(savedNotes[currentNoteId].updatedAt).toLocaleString()}
-                  </p>
-                </div>
-                <div className="flex gap-2">
-                  <button
-                    onClick={handleManualSave}
-                    disabled={!hasUnsavedChanges}
-                    className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-green-600 rounded-md hover:bg-green-700 disabled:bg-gray-400 disabled:cursor-not-allowed"
-                  >
-                    <Save className="w-4 h-4" />
-                    Save Changes
-                  </button>
-                  <button
-                    onClick={() => handleDownloadAll(currentNoteId, savedNotes[currentNoteId].title)}
-                    className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700"
-                  >
-                    <Download className="w-4 h-4" />
-                    Download All
-                  </button>
-                </div>
+          <div className="h-full">
+            <div className="flex justify-between items-center mb-6">
+              <div>
+                <h2 className="text-lg font-semibold">{savedNotes[currentNoteId].title}</h2>
+                <p className="text-sm text-gray-500">
+                  Version {savedNotes[currentNoteId].current.version} • 
+                  Last edited: {new Date(savedNotes[currentNoteId].updatedAt).toLocaleString()}
+                </p>
               </div>
-              <textarea
-                key={currentNoteId}
-                value={editorValue}
-                onChange={(e) => {
-                  setEditorValue(e.target.value);
-                  setHasUnsavedChanges(true);
-                }}
-                onKeyDown={handleKeyDown}
-                className="w-full h-[calc(100vh-8rem)] p-4 font-mono text-sm bg-white rounded shadow border border-gray-200 focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
-                spellCheck={false}
-              />
+              <div className="flex gap-2">
+                <button
+                  onClick={handleManualSave}
+                  disabled={!hasUnsavedChanges}
+                  className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-green-600 rounded-md hover:bg-green-700 disabled:bg-gray-400 disabled:cursor-not-allowed"
+                >
+                  <Save className="w-4 h-4" />
+                  Save Changes
+                </button>
+                <button
+                  onClick={() => handleDownloadAll(currentNoteId, savedNotes[currentNoteId].title)}
+                  className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700"
+                >
+                  <Download className="w-4 h-4" />
+                  Download All
+                </button>
+              </div>
             </div>
-            <div className="w-80 space-y-4">
-              <button
-                onClick={() => setShowAudioModal(true)}
-                disabled={isGeneratingAudio}
-                className="w-full flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                <Volume2 className="w-4 h-4" />
-                Generate Audio Lecture
-              </button>
-
-              {savedNotes[currentNoteId].audio?.concise && (
-                <AudioPlayer
-                  audio={savedNotes[currentNoteId].audio.concise}
-                  onRegenerate={() => handleGenerateAudio('concise')}
-                  isRegenerating={isGeneratingAudio && currentAudioStyle === 'concise'}
-                />
-              )}
-
-              {savedNotes[currentNoteId].audio?.detailed && (
-                <AudioPlayer
-                  audio={savedNotes[currentNoteId].audio.detailed}
-                  onRegenerate={() => handleGenerateAudio('detailed')}
-                  isRegenerating={isGeneratingAudio && currentAudioStyle === 'detailed'}
-                />
-              )}
+            
+            <div className="bg-white mt-8">
+              <pre className="whitespace-pre-wrap font-mono text-sm leading-relaxed">
+                {savedNotes[currentNoteId].current.content}
+              </pre>
             </div>
           </div>
         ) : null}

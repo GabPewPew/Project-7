@@ -1,5 +1,6 @@
 import JSZip from 'jszip';
-import { AudioData } from '../types';
+import { AudioData, NoteBlock } from '../types';
+import { markdownToNoteBlocks } from './markdownToBlocks';
 
 export interface NoteMetadata {
   noteId: string;
@@ -156,9 +157,13 @@ export class NoteSaver {
       version: 1
     };
 
+    // Convert content to blocks
+    const blocks = markdownToNoteBlocks(content);
+
     const currentVersion = {
       version: 1,
       content,
+      blocks,
       rawData: JSON.stringify(files.map(f => f.name)),
       updatedAt: timestamp
     };
@@ -178,7 +183,8 @@ export class NoteSaver {
   async updateNote(
     noteId: string,
     content: string,
-    files?: File[]
+    files?: File[],
+    blocks?: NoteBlock[]
   ): Promise<void> {
     const note = this.notes.get(noteId);
     if (!note) {
@@ -195,6 +201,7 @@ export class NoteSaver {
     note.current = {
       version: newVersion,
       content,
+      blocks: blocks || markdownToNoteBlocks(content),
       rawData: JSON.stringify((files || note.files).map(f => f.name)),
       updatedAt: timestamp
     };

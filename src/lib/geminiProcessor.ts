@@ -1,8 +1,16 @@
 import axios from 'axios';
 import { GeminiRequest, GeminiResponse } from '../types';
+import { markdownToNoteBlocks } from './markdownToBlocks';
 
+// Get API key from Vite environment variables
 const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY;
-const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1/models/gemini-1.5-pro:generateContent';
+const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent';
+
+// Validate API key early
+if (!GEMINI_API_KEY) {
+  console.error('❌ GEMINI_API_KEY is not defined in environment variables');
+  throw new Error('GEMINI_API_KEY is required. Please add it to your .env file as VITE_GEMINI_API_KEY');
+}
 
 function buildPrompt(request: GeminiRequest): string {
   if (!request || typeof request.content !== 'string') {
@@ -75,181 +83,42 @@ Your task is to create a set of **comprehensive, exam-focused study notes** base
 - Think of this as **teaching through notes** — progressively build the student's understanding
 - Provide **key definitions**, **stepwise frameworks**, **mechanisms**, **classifications**, and **common errors**
 - Include summaries at the end of long sections
-- Avoid raw data dumps — **explain ideas, connect them, and simplify where possible**
-
-### 🧠 Domain-Specific Structuring:
-${request.primary === 'Medicine' ? `
-1. Definition & Epidemiology
-2. Risk Factors / Causes
-3. Pathophysiology
-4. Clinical Features
-5. Differential Diagnosis
-6. Investigations
-7. Management
-8. Prognosis / Complications
-9. Special Cases` : request.primary === 'Law' ? `
-1. Concept / Doctrine
-2. Statutory / Historical Basis
-3. Landmark Cases (facts + rulings)
-4. Tests / Criteria
-5. Applications
-6. Controversies or Exceptions
-7. Policy / Social Implications` : request.primary === 'Business' ? `
-1. Theory / Model
-2. Context / Justification
-3. Step-by-Step Application
-4. Examples or Case Studies
-5. Strengths / Weaknesses
-6. Competing Models
-7. Strategic Uses` : request.primary === 'Engineering' ? `
-1. Principle / Theory
-2. Definitions & Units
-3. Equations or Algorithms
-4. Example Problems
-5. Boundary Conditions / Pitfalls
-6. System Constraints
-7. Real-World Use Cases` : `
-1. Central Question / Theme
-2. Context / Background
-3. Thinkers / Events / Works
-4. Evolution of Ideas
-5. Interpretations / Debates
-6. Counterpoints
-7. Legacy & Modern Significance`}
-
-### 📋 Format Instructions:
-- Use clear domain-based structure
-- Use headings, subpoints, indents where necessary
-- Bold important terms and concepts`;
+- Avoid raw data dumps — **explain ideas, connect them, and simplify where possible**`;
     } else if (request.style === 'deep_dive') {
       basePrompt = `### Expert-Level Teaching with File Priority, Trusted Enhancements & Missing Insight Support
 
-You are a highly experienced university-level educator in the subject of ${request.primary}.
+You are a senior-level educator and subject-matter expert in ${request.primary}.
 
-Your task is to create a set of **comprehensive, structured, and expert-level study notes** based on the uploaded content. These notes should support deep understanding, aid exam preparation, and provide additional insights by referencing **reputable external sources** when appropriate.
+Your task is to write **comprehensive, structured, expert-level notes** for students or professionals based on the content and enhanced with reputable sources.
 
-### 🎯 **Your Goals:**
+### 📂 Content Analysis Instructions:
+- Prioritize the provided content
+- Structure your notes logically and progressively
+- Include clear references to source material
+- Describe key concepts thoroughly
 
-- Summarize the material into **clear, logically organized, and in-depth** study notes
-- Explain important ideas with **just enough context** to make them understandable and memorable
-- Maintain a tone suitable for students revising seriously or learning for the first time
-- Include examples, critical points, and **domain-specific logic** (see guide below)
-- Where appropriate, **reference the original source** to help students trace back content:
-    - If using a quote or idea from a **PDF**, mention the **page number** (e.g. “(p.12)”)
-    - If referencing spoken content from a **transcript or audio/video**, include the **approximate minute or timestamp** (e.g. “(at ~15:40)”)
-    - If a **figure, image, or table** is mentioned or relevant, describe it briefly and **point back to its original label or file source**
+### 🌐 Enhancement Guidelines:
+After summarizing the main content, enrich sections by adding:
+- Updated information (clearly marked)
+- Better explanations or models
+- Useful consensus points or controversies
+- Mark enhancements clearly with "🔎 Additional Note:" headers
 
----
+### ➕ Critical Topics:
+If important topics are missing, add them as:
+> 📎 Additional Insight:
+> Brief overview of the missing but critical topic...
 
-### 📚 **How to Approach the Content:**
-
-- Think of this as **teaching through notes** — progressively build the student’s understanding
-- Provide:
-    - **Key definitions**
-    - **Stepwise frameworks**
-    - **Mechanisms**
-    - **Classifications**
-    - **Common misconceptions**
-- Include short summaries at the end of longer sections
-- Avoid raw data dumps — **explain ideas, connect them, and simplify when needed**
-
----
-
-### 🌐 Step 2: Enhance with Trusted External Sources (But Don’t Replace)
-
-After summarizing content from the files, enrich the section **by appending additional insight directly underneath** if:
-
-- A **newer version of information exists**
-- A better explanation or model helps understanding
-- There’s a useful consensus, definition, or controversy worth noting
-
-📌 Clearly mark these as external enhancements. Examples:
-
-- **🔎 Additional Note (UpToDate 2023):**
-- **📈 Updated Evidence (PubMed 2022 Meta-analysis):**
-- **🛠 Engineering Update (IEEE 2024):**
-
-Do **not overwrite** the original note — the enhancement should build upon and clarify it.
-
----
-
-### ➕ Step 3: Add Crucial Missing Topics as “Additional Insight”
-
-If an important topic is **not covered** in the original content but is:
-
-- Commonly tested
-- Considered best practice
-- Valuable for real-world use
-- Highlighted in modern curriculum or research
-
-…then **add a short, clearly labeled section** like this:
-
-> 📎 Additional Insight (Cochrane Review 2023):
-
-> “While not covered in the original file, this is a critical topic in advanced study. Here’s a brief overview…”
-
----
-
-### 🧠 How to Think & Teach:
-
-- You are writing lecture-level, explanatory, insightful notes
-- Use logical order, deep explanations, and progressive flow
+### 🧠 Teaching Approach:
+- Write lecture-level, explanatory notes
+- Use logical order and progressive flow
 - Include:
-    - Definitions
-    - Classifications
-    - Frameworks
-    - Mechanisms / rationale
+    - Detailed definitions
+    - Complete classifications
+    - Comprehensive frameworks
+    - Underlying mechanisms
     - Common misconceptions
-    - Short summaries per major section
-
-### Domain-Specific Structure:
-${request.primary === 'Medicine' ? `
-1. Overview & Epidemiology
-2. Etiology / Risk Factors
-3. Pathophysiology / Mechanism
-4. Clinical Presentation
-5. Differential Diagnosis
-6. Investigations / Diagnostic Workup
-7. Treatment / Management Guidelines
-8. Prognosis & Complications
-9. Recent Guidelines or Research` : request.primary === 'Law' ? `
-1. Legal Principle / Concept Definition
-2. Statutory or Constitutional Foundation
-3. Key Case Law & Interpretations
-4. Legal Tests / Doctrinal Criteria
-5. Common Applications & Exceptions
-6. Controversial Interpretations / Debates
-7. Comparative Legal Perspectives
-8. Recent Legislative or Judicial Updates` : request.primary === 'Business' ? `
-1. Theoretical Framework or Model
-2. Historical / Market Context
-3. Step-by-Step Strategic Application
-4. Use Cases or Corporate Examples
-5. Benefits, Drawbacks, Trade-Offs
-6. Alternate Theories / Competing Models
-7. Real-World Impacts & Case Studies
-8. Trends or Forecasts` : request.primary === 'Engineering' ? `
-1. Concept or Engineering Principle
-2. Mathematical or Logical Foundations
-3. Standard Algorithms / Equations
-4. Applications or Systems Architecture
-5. Performance Considerations / Limitations
-6. Edge Cases / Failures / Trade-offs
-7. Modern Implementations or Benchmarks
-8. Current Industry Standards` : `
-1. Central Theme or Inquiry
-2. Historical or Cultural Context
-3. Key Figures / Movements / Works
-4. Core Interpretations / Analytical Lenses
-5. Criticisms or Alternate Views
-6. Legacy or Modern Relevance
-7. Current Academic Debates`}
-
-### 📋 Format Requirements:
-- Use detailed structure by subject (medicine, law, etc.)
-- Headings, numbered sections, and bullet-point subpoints
-- Include inline references when helpful for tracing
-- Label all additional or enhanced info clearly`;
+    - Section summaries`;
     }
   } else if (request.intent === 'research') {
     basePrompt = `You are a research expert in ${request.primary}${request.secondary ? ` specializing in ${request.secondary}` : ''}.
@@ -279,11 +148,6 @@ Remember: This must be a UNIQUE analysis specific to this content. Do not genera
 }
 
 export async function generateNotes(request: GeminiRequest): Promise<GeminiResponse> {
-  if (!GEMINI_API_KEY) {
-    console.error('❌ Gemini API key is missing');
-    throw new Error('API key is not configured');
-  }
-
   try {
     console.log('📝 Generating notes for:', {
       fileId: request.fileId,
@@ -303,7 +167,7 @@ export async function generateNotes(request: GeminiRequest): Promise<GeminiRespo
           parts: [{ text: prompt }]
         }],
         generationConfig: {
-          temperature: 0.8, // Increased for more variation
+          temperature: 0.8,
           topK: 40,
           topP: 0.95,
           candidateCount: 1
@@ -323,20 +187,11 @@ export async function generateNotes(request: GeminiRequest): Promise<GeminiRespo
       throw new Error('Failed to generate notes: No content received');
     }
 
-    // Log content preview for debugging
-    console.log('📄 Generated content preview:', {
-      fileId: request.fileId,
-      fileName: request.fileName,
-      contentLength: generatedText.length,
-      preview: generatedText.slice(0, 100)
-    });
-
-    // Extract mnemonics if present
-    const mnemonics = generatedText.match(/(?<=\*\*Mnemonic:\*\*)(.*?)(?=\n|$)/g) || [];
-
+    // Return raw text without any processing or block conversion
     return {
       notes: generatedText,
-      mnemonics: mnemonics.map(m => m.trim())
+      mnemonics: [], // Skip mnemonic extraction for now
+      blocks: [] // Skip block conversion to prevent duplication
     };
 
   } catch (error) {

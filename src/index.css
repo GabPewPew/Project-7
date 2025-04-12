@@ -75,3 +75,40 @@
 .mdxeditor [data-lexical-editor] a {
   @apply text-blue-600 hover:text-blue-800 underline;
 }
+
+/* Remove default contentEditable outline */
+[contenteditable]:focus {
+  outline: none;
+}
+
+/* Custom hover and focus styles for blocks */
+[contenteditable] {
+  @apply transition-colors duration-100;
+  cursor: text;
+}
+
+/* Notion-style bullet points */
+.bullet-list li::before {
+  content: '';
+  @apply w-1.5 h-1.5 bg-gray-400 rounded-full absolute left-0 top-2;
+}
+
+/* ChatGPT-style layout adjustments */
+.main-content {
+  @apply max-w-3xl mx-auto px-4 md:px-6 lg:px-8;
+}
+
+.sidebar-transition {
+  @apply transition-all duration-300 ease-in-out;
+}
+
+.note-container {
+  @apply bg-white rounded-none shadow-none border-0;
+}
+
+/* Mobile optimizations */
+@media (max-width: 768px) {
+  .main-content {
+    @apply max-w-full px-4 pt-6;
+  }
+}

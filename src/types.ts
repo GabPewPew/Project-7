@@ -45,6 +45,7 @@ export interface GeminiResponse {
   notes: string;
   mnemonics?: string[];
   error?: string;
+  blocks?: NoteBlock[];
 }
 
 export interface ProcessedContent {
@@ -63,6 +64,7 @@ export interface NoteVersion {
   content: string;
   rawData: string;
   updatedAt: number;
+  blocks?: NoteBlock[];
 }
 
 export interface AudioData {
@@ -126,4 +128,12 @@ export interface NoteAuditEntry {
     previousVersion?: number;
     newVersion?: number;
   };
+}
+
+export interface NoteBlock {
+  id: string;
+  type: 'heading' | 'paragraph' | 'bullet';
+  content: string;
+  level?: 1 | 2 | 3;
+  items?: string[];
 }
