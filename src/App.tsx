@@ -143,8 +143,10 @@ function App() {
 
   const handleFilesChange = (newFiles: File[]) => {
     try {
-      const metadata = processFiles(newFiles);
-      setFiles(newFiles);
+      // Combine existing and new files, up to the limit of 3
+      const combinedFiles = [...files, ...newFiles].slice(0, 3);
+      const metadata = processFiles(combinedFiles);
+      setFiles(combinedFiles);
       setFileMetadata(metadata);
       setError(null);
       
@@ -392,6 +394,11 @@ function App() {
     }
   };
 
+  const handleNoteContentChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    setEditorValue(e.target.value);
+    setHasUnsavedChanges(true);
+  };
+
   return (
     <Layout
       savedNotes={savedNotes}
@@ -551,7 +558,7 @@ function App() {
             onNoteSelect={handleNoteSelect}
           />
         ) : currentNoteId && savedNotes[currentNoteId] ? (
-          <div className="h-full">
+          <div className="h-full" onKeyDown={handleKeyDown}>
             <div className="flex justify-between items-center mb-6">
               <div>
                 <h2 className="text-lg font-semibold">{savedNotes[currentNoteId].title}</h2>
@@ -580,9 +587,12 @@ function App() {
             </div>
             
             <div className="bg-white mt-8">
-              <pre className="whitespace-pre-wrap font-mono text-sm leading-relaxed">
-                {savedNotes[currentNoteId].current.content}
-              </pre>
+              <textarea
+                value={editorValue}
+                onChange={handleNoteContentChange}
+                className="w-full h-[calc(100vh-200px)] font-mono text-sm leading-relaxed p-4 focus:outline-none"
+                spellCheck={false}
+              />
             </div>
           </div>
         ) : null}
