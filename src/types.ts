@@ -76,11 +76,31 @@ export interface AudioData {
 }
 
 export interface Flashcard {
+  id: string;
   front: string;
   back: string;
   pageNumber?: number;
-  pageImage?: string; // base64 or path
-  sourceText?: string; // Original text from the source material
+  pageImage?: string;
+  sourceText?: string;
+}
+
+export interface FlashcardProgress {
+  flashcardId: string;
+  userId: string;
+  noteId: string;
+  reps: number;
+  interval: number;
+  easeFactor: number;
+  dueDate: string;
+  lastReviewed: string;
+}
+
+export interface NoteAudio {
+  url: string;
+  script: string;
+  style: 'concise' | 'detailed';
+  voice: string;
+  generatedAt: string;
 }
 
 export interface SavedNote {
@@ -149,8 +169,8 @@ export interface FileMetadata {
   fileType: 'pdf' | 'audio' | 'video' | 'unknown';
   mimeType?: string;
   size?: number;
-  totalPages?: number; // For PDFs
-  duration?: number; // For audio/video
-  fileUrl?: string; // Data URL or path where the original file is stored
-  extractedTextKey?: string; // Key to retrieve extracted plain text from IndexedDB
+  totalPages?: number;
+  duration?: number;
+  fileUrl?: string;
+  extractedTextKey?: string;
 }

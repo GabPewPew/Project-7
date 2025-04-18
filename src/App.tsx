@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Save, Download, Sparkles, Volume2, BookOpen } from 'lucide-react';
 import { Toaster, toast } from 'sonner';
 import { Layout } from './components/Layout';
@@ -18,10 +18,13 @@ import { AudioPlayer } from './components/AudioPlayer';
 import { AudioGenerateModal } from './components/AudioGenerateModal';
 import { FlashcardModal } from './components/FlashcardModal';
 import { NoteRenderer } from './components/NoteRenderer';
-import { LearningIntent, ExamPrepStyle, ResearchStyle, ProcessingResult, SavedNote, NoteBlock, Flashcard } from './types';
+import { LearningIntent, ExamPrepStyle, ResearchStyle, ProcessingResult, SavedNote, NoteBlock, Flashcard, FlashcardProgress } from './types';
 import { FlashcardPreview } from './components/FlashcardPreview';
 import { extractMultiplePageImages, extractPageImage, createBasicPdf } from './lib/pdfUtils';
 import { getFileContent, getExtractedText } from './lib/fileStorage';
+import axios from 'axios';
+import generateAnkiPackage from './lib/ankiExport';
+// import { throttle } from './lib/utils'; // Assuming this exists
 
 const DEMO_USER_ID = 'demo_user';
 
@@ -57,6 +60,14 @@ function App() {
   const [currentAudioStyle, setCurrentAudioStyle] = useState<'concise' | 'detailed' | null>(null);
   const [showFlashcardModal, setShowFlashcardModal] = useState(false);
   const [isGeneratingFlashcards, setIsGeneratingFlashcards] = useState(false);
+  const [reviewQueue, setReviewQueue] = useState<Flashcard[]>([]);
+  const [reviewIndex, setReviewIndex] = useState(0);
+  const [newCardIdsInQueue, setNewCardIdsInQueue] = useState<Set<string>>(new Set());
+  const [reviewSessionOriginalCount, setReviewSessionOriginalCount] = useState(0);
+  const [cardGoodCounts, setCardGoodCounts] = useState<Record<string, number>>({});
+  const [sessionNewCount, setSessionNewCount] = useState(0);
+  const [sessionDueCount, setSessionDueCount] = useState(0);
+  const [showExportOptions, setShowExportOptions] = useState(false);
 
   const noteSaver = new NoteSaver(DEMO_USER_ID);
 
@@ -1005,6 +1016,377 @@ function App() {
     return '';
   };
 
+  // Function to handle moving to the previous card in review
+  const handlePreviousCard = () => {
+    setReviewIndex(prev => Math.max(0, prev - 1));
+  };
+
+  // --- REVISED: Flashcard Response Handling (Focus on State Update Order & Again Bug Fix) --- 
+  const handleFlashcardResponse = async (response: 'again' | 'good') => {
+    if (reviewIndex >= reviewQueue.length || !currentNoteId) return; // Safety checks
+
+    const currentCard = reviewQueue[reviewIndex];
+    // --- Get Stable ID --- 
+    const allCardsInNote = savedNotes[currentNoteId]?.flashcards || [];
+    const cardIndexInNote = allCardsInNote.findIndex(c => 
+        c.front === currentCard.front && 
+        c.back === currentCard.back
+    );
+    // Use a fallback ID if the original index isn't found, though this shouldn't happen
+    const flashcardId = cardIndexInNote >= 0 
+        ? `note_${currentNoteId}_card_${cardIndexInNote}` 
+        : `error_card_${Date.now()}`;
+    if (cardIndexInNote < 0) {
+       console.error(`[Review] Could not find original index for card:`, currentCard, `Using fallback ID: ${flashcardId}`);
+       // Don't necessarily return, try to proceed with fallback ID for local counts
+    }
+    // ---------------------
+
+    let nextQueue = [...reviewQueue];
+    let nextGoodCounts = { ...cardGoodCounts };
+    let nextReviewIndex = reviewIndex; // Initialize with current index
+
+    console.log(`[Review Start] Action: ${response} | Current Index: ${reviewIndex} | Queue Length: ${reviewQueue.length} | Card ID: ${flashcardId}`);
+
+    if (response === 'again') {
+        nextGoodCounts[flashcardId] = 0; // Reset good count
+
+        // Remove card from current position
+        const cardToReinsert = nextQueue.splice(reviewIndex, 1)[0];
+
+        if (cardToReinsert) {
+            // Insert 2 positions ahead, capped at the end of the *new* length
+            const insertIndex = Math.min(reviewIndex + 2, nextQueue.length);
+            nextQueue.splice(insertIndex, 0, cardToReinsert);
+            console.log(`[Review Again] Reinserted '${flashcardId}' at index ${insertIndex}. New queue size: ${nextQueue.length}`);
+
+            // Index *stays the same* logically because the item at reviewIndex was removed.
+            // The next item to show is now at the original reviewIndex in the modified queue.
+            // No change needed to nextReviewIndex initially set to reviewIndex.
+            nextReviewIndex = reviewIndex; 
+        } else {
+            console.error(`[Review Again] Failed to remove card at index ${reviewIndex}. Advancing index to prevent stall.`);
+            nextReviewIndex = reviewIndex + 1; // Advance if removal failed
+        }
+
+    } else if (response === 'good') {
+        const currentGoodCount = cardGoodCounts[flashcardId] || 0;
+        const newGoodCount = currentGoodCount + 1;
+        nextGoodCounts[flashcardId] = newGoodCount;
+
+        if (newGoodCount >= 3) {
+            // Learned: remove card
+            console.log(`[Review Good] Card '${flashcardId}' learned (Count: ${newGoodCount}). Removing.`);
+            nextQueue.splice(reviewIndex, 1); // Remove from queue
+            // Index *stays the same* logically because the item was removed.
+            nextReviewIndex = reviewIndex;
+
+            // --- Send update to backend --- 
+            const isOriginallyNew = newCardIdsInQueue.has(flashcardId);
+            const updateType = isOriginallyNew ? "LEARNED (New)" : "REVIEWED (Due)";
+            console.log(` - Sending ${updateType} update to backend for ${flashcardId}`);
+            const payload = { flashcardId, userId: DEMO_USER_ID, noteId: currentNoteId, response: 'good' };
+            axios.post('http://localhost:3000/api/flashcard/response', payload)
+              .then(() => console.log(`   Backend update SUCCESS for ${flashcardId}`))
+              .catch(err => console.error(`   Backend update FAILED for ${flashcardId}:`, err));
+            
+            if (isOriginallyNew) {
+                setNewCardIdsInQueue(prev => { const next = new Set(prev); next.delete(flashcardId); return next; });
+            }
+            // Clean up local count AFTER potential backend call finishes (or immediately is fine too)
+            delete nextGoodCounts[flashcardId]; 
+            // ----------------------------- 
+
+        } else {
+            // Good, but not learned yet: Advance index
+            console.log(`[Review Good] Card '${flashcardId}' count updated (${newGoodCount}). Advancing.`);
+            nextReviewIndex = reviewIndex + 1;
+        }
+    }
+
+    // --- Determine Final State --- 
+    // Check if the queue is now empty
+    if (nextQueue.length === 0) {
+        console.log("[Review End] Session finished! Queue is empty.");
+        toast.success("Flashcard review complete!");
+        setShowFlashcardModal(false);
+        // Clear all session state
+        setReviewQueue([]);
+        setReviewIndex(0);
+        setCardGoodCounts({});
+        setNewCardIdsInQueue(new Set());
+        setSessionNewCount(0);
+        setSessionDueCount(0);
+        setReviewSessionOriginalCount(0);
+    } else {
+        // Clamp the calculated next index to valid bounds of the *final* queue
+        // IMPORTANT: The valid index range is 0 to nextQueue.length - 1
+        const finalNextIndex = Math.min(nextReviewIndex, nextQueue.length - 1); 
+
+        console.log(`[Review Update] Setting State - Next Index: ${finalNextIndex} | New Queue Length: ${nextQueue.length}`);
+
+        // Set state together to hopefully trigger a single re-render cycle for the update
+        setCardGoodCounts(nextGoodCounts);
+        setReviewQueue(nextQueue);
+        setReviewIndex(finalNextIndex); 
+    }
+  };
+
+  // --- startReviewSession remains largely the same (fetches progress, categorizes, shuffles) --- 
+  const startReviewSession = async () => {
+    if (!currentNoteId || !savedNotes[currentNoteId]?.flashcards?.length) {
+      toast.warning("No flashcards available for review in this note.");
+      return;
+    }
+    
+    setIsGeneratingFlashcards(true); 
+    console.log('[Review Setup] Starting...');
+    try {
+      console.log(`Loading flashcard progress for note ${currentNoteId} from API...`);
+      const progressResponse = await axios.get<{ progress: Record<string, FlashcardProgress> }>(`http://localhost:3000/api/flashcards/progress?userId=${DEMO_USER_ID}&noteId=${currentNoteId}`);
+      const currentProgress = progressResponse.data.progress || {}; 
+      console.log(" - Fetched progress:", currentProgress);
+
+      const allCardsInNote = savedNotes[currentNoteId].flashcards;
+      if (!allCardsInNote || allCardsInNote.length === 0) {
+        toast.info("No flashcards found in this note.");
+        setIsGeneratingFlashcards(false);
+        return;
+      }
+      
+      const initialNewCards: Flashcard[] = [];
+      const initialDueCards: Flashcard[] = [];
+      const now = new Date().toISOString().split('T')[0]; 
+      const currentNewCardIds = new Set<string>();
+      setCardGoodCounts({}); 
+
+      allCardsInNote.forEach((card, index) => {
+        const placeholderId = `note_${currentNoteId}_card_${index}`;
+        const progress = currentProgress[placeholderId]; 
+        if (!progress) {
+          initialNewCards.push(card);
+          currentNewCardIds.add(placeholderId);
+        } else {
+          const dueDate = progress.dueDate; 
+          if (dueDate && dueDate <= now) {
+            initialDueCards.push(card);
+          } 
+        }
+      });
+
+      console.log(` - Categorized cards - New: ${initialNewCards.length}, Due: ${initialDueCards.length}`);
+      setSessionNewCount(initialNewCards.length); 
+      setSessionDueCount(initialDueCards.length);
+      setNewCardIdsInQueue(currentNewCardIds);
+
+      const newCardLimit = 20; 
+      const queue = [
+        ...initialNewCards.slice(0, newCardLimit), 
+        ...initialDueCards                    
+      ];
+      
+      if (queue.length === 0) {
+         toast.info("No flashcards are due for review right now.");
+         setIsGeneratingFlashcards(false);
+         setSessionNewCount(0);
+         setSessionDueCount(0);
+         setNewCardIdsInQueue(new Set());
+         return;
+      }
+
+      for (let i = queue.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [queue[i], queue[j]] = [queue[j], queue[i]];
+      }
+      console.log(` - Created initial queue of ${queue.length} cards (max ${newCardLimit} new). Shuffled.`);
+      
+      setReviewQueue(queue);
+      setReviewIndex(0);
+      setReviewSessionOriginalCount(queue.length); 
+      setShowFlashcardModal(true);
+
+    } catch (error: any) { 
+      console.error("Error starting review session:", error);
+      toast.error(`Could not start review session: ${error.message || 'Failed to load progress.'}`);
+      setReviewQueue([]);
+      setReviewIndex(0);
+      setCardGoodCounts({});
+      setNewCardIdsInQueue(new Set());
+      setSessionNewCount(0);
+      setSessionDueCount(0);
+      setReviewSessionOriginalCount(0);
+    } finally {
+      setIsGeneratingFlashcards(false); 
+    }
+  };
+
+  // --- NEW: Generic Export Handler --- 
+  const handleExport = async (format: 'apkg' | 'txt' | 'pdf') => {
+    if (!currentNoteId || !savedNotes[currentNoteId]?.flashcards?.length) {
+      toast.warning("No flashcards to export in this note.");
+      return;
+    }
+    setShowExportOptions(false); // Close dropdown after selection
+
+    try {
+      console.log(`[Export] Starting export in format: ${format}`);
+      // Fetch progress 
+      const progressResponse = await axios.get<{ progress: Record<string, FlashcardProgress> }>(`http://localhost:3000/api/flashcards/progress?userId=${DEMO_USER_ID}&noteId=${currentNoteId}`);
+      const currentProgress = progressResponse.data.progress || {};
+      const now = new Date().toISOString().split('T')[0];
+      const allCardsInNote = savedNotes[currentNoteId].flashcards;
+      const noteTitle = savedNotes[currentNoteId].title.replace(/[^a-z0-9]/gi, '_').toLowerCase();
+      // Ensure version exists before using it
+      const noteVersion = savedNotes[currentNoteId].current?.version || 1; 
+
+      // --- Generate content based on format --- 
+      let blob: Blob | null = null;
+      let filename = `flashcards_${noteTitle}_v${noteVersion}.${format}`;
+
+      if (format === 'txt') {
+        const cardsToExport = allCardsInNote.map((card, index) => {
+          const placeholderId = `note_${currentNoteId}_card_${index}`;
+          const progress = currentProgress[placeholderId];
+          let status = "New";
+          if (progress) {
+            const dueDate = progress.dueDate;
+            status = dueDate && dueDate <= now ? "Due" : "Learning";
+          }
+          // Replace newlines in front/back for cleaner TXT output
+          const front = card.front.replace(/\n/g, ' ');
+          const back = card.back.replace(/\n/g, ' ');
+          return { front, back, status };
+        });
+
+        const txtContent = cardsToExport.map(c => `Q: ${c.front}\nA: ${c.back}\nStatus: ${c.status}`).join('\n---\n');
+        blob = new Blob(['\uFEFF' + txtContent], { type: 'text/plain;charset=utf-8;' });
+
+      } else if (format === 'apkg') {
+        // UPDATED: Use the generateAnkiPackage utility
+        toast.info('Generating Anki package, please wait...');
+        try {
+          const deckName = `${savedNotes[currentNoteId].title} Flashcards`;
+          const deckDescription = `Generated from Study Assistant - ${allCardsInNote.length} cards`;
+          
+          // Call the Anki export utility
+          blob = await generateAnkiPackage(
+            allCardsInNote, 
+            deckName,
+            deckDescription
+          );
+        } catch (ankiError) {
+          console.error('[Export] Error generating Anki package:', ankiError);
+          toast.error('Failed to generate Anki package. Check console for details.');
+          return;
+        }
+
+      } else if (format === 'pdf') {
+        // UPDATED: Simple PDF export implementation
+        toast.info('Generating PDF, please wait...');
+        try {
+          // Import the pdf-lib library dynamically to avoid loading it unless needed
+          const { PDFDocument, rgb, StandardFonts } = await import('pdf-lib');
+          
+          // Create a new PDF document
+          const pdfDoc = await PDFDocument.create();
+          const helveticaFont = await pdfDoc.embedFont(StandardFonts.Helvetica);
+          const helveticaBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+          
+          // Create cards (1 per page with front/back split)
+          for (const card of allCardsInNote) {
+            const page = pdfDoc.addPage([500, 700]);
+            
+            // Draw front side (top half)
+            page.drawText('FRONT:', { 
+              x: 50, 
+              y: 650, 
+              size: 14,
+              font: helveticaBold,
+              color: rgb(0.3, 0.3, 0.8)
+            });
+            
+            page.drawText(card.front, {
+              x: 50,
+              y: 620,
+              size: 12,
+              font: helveticaFont,
+              width: 400,
+              lineHeight: 18,
+              color: rgb(0, 0, 0)
+            });
+            
+            // Draw divider
+            page.drawLine({
+              start: { x: 50, y: 350 },
+              end: { x: 450, y: 350 },
+              thickness: 1,
+              color: rgb(0.8, 0.8, 0.8),
+            });
+            
+            // Draw back side (bottom half)
+            page.drawText('BACK:', { 
+              x: 50, 
+              y: 320, 
+              size: 14,
+              font: helveticaBold,
+              color: rgb(0.8, 0.3, 0.3)
+            });
+            
+            page.drawText(card.back, {
+              x: 50,
+              y: 290,
+              size: 12,
+              font: helveticaFont,
+              width: 400,
+              lineHeight: 18,
+              color: rgb(0, 0, 0)
+            });
+            
+            // Page number at the bottom
+            page.drawText(`Card ${allCardsInNote.indexOf(card) + 1} of ${allCardsInNote.length}`, {
+              x: 380,
+              y: 50,
+              size: 10,
+              font: helveticaFont,
+              color: rgb(0.5, 0.5, 0.5)
+            });
+          }
+          
+          // Serialize the PDF to bytes and create blob
+          const pdfBytes = await pdfDoc.save();
+          blob = new Blob([pdfBytes], { type: 'application/pdf' });
+          
+        } catch (pdfError) {
+          console.error('[Export] Error generating PDF:', pdfError);
+          toast.error('Failed to generate PDF. Check console for details.');
+          return;
+        }
+      }
+
+      // --- Trigger download if blob was created --- 
+      if (blob) {
+        const link = document.createElement('a');
+        if (link.download !== undefined) {
+          const url = URL.createObjectURL(blob);
+          link.setAttribute('href', url);
+          link.setAttribute('download', filename);
+          link.style.visibility = 'hidden';
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+          URL.revokeObjectURL(url);
+          toast.success(`Flashcards exported as ${format.toUpperCase()}.`);
+        } else {
+          toast.error("Browser does not support file download.");
+        }
+      }
+
+    } catch (error: any) {
+      console.error(`Error exporting flashcards as ${format}:`, error);
+      toast.error(`Failed to export flashcards: ${error.message || 'Unknown error'}`);
+    }
+  };
+
   return (
     <Layout
       savedNotes={savedNotes}
@@ -1045,11 +1427,52 @@ function App() {
                 </span>
               </div>
               <button
-                onClick={() => setShowFlashcardModal(true)}
+                onClick={startReviewSession} 
                 className="w-full mt-2 px-3 py-1.5 text-sm text-gray-700 bg-white border border-gray-200 rounded hover:bg-gray-50"
+                disabled={showFlashcardModal || isGeneratingFlashcards} 
               >
                 Review Flashcards
               </button>
+
+              {/* --- Export Dropdown --- */}
+              <div className="relative inline-block w-full mt-2"> {/* Added mt-2 */} 
+                <button
+                  onClick={() => setShowExportOptions(prev => !prev)}
+                  className="w-full px-3 py-1.5 text-sm text-gray-700 bg-white border border-gray-200 rounded hover:bg-gray-50 flex items-center justify-between"
+                  disabled={!savedNotes[currentNoteId]?.flashcards?.length}
+                >
+                  Export Flashcards
+                  <svg className={`w-4 h-4 transition-transform duration-200 ${showExportOptions ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
+                </button>
+                {showExportOptions && (
+                  <div className="absolute right-0 mt-1 w-full rounded-md shadow-lg bg-white ring-1 ring-black ring-opacity-5 focus:outline-none z-10">
+                    <div className="py-1" role="menu" aria-orientation="vertical" aria-labelledby="options-menu">
+                      <button
+                        onClick={() => handleExport('apkg')}
+                        className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 hover:text-gray-900"
+                        role="menuitem"
+                      >
+                        Export as .apkg (Anki)
+                      </button>
+                      <button
+                        onClick={() => handleExport('txt')}
+                        className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 hover:text-gray-900"
+                        role="menuitem"
+                      >
+                        Export as .txt
+                      </button>
+                      <button
+                        onClick={() => handleExport('pdf')}
+                        className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 hover:text-gray-900"
+                        role="menuitem"
+                      >
+                        Export as .pdf (Printable)
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+              {/* ----------------------- */}
               
               <FlashcardPreview 
                 flashcards={savedNotes[currentNoteId].flashcards}
@@ -1092,31 +1515,34 @@ function App() {
           />
         )}
 
-        {showFlashcardModal && currentNoteId && savedNotes[currentNoteId]?.flashcards && (
+        {/* --- Updated FlashcardModal Call --- */}
+        {showFlashcardModal && reviewQueue.length > 0 && currentNoteId && (
           <FlashcardModal
-            flashcards={savedNotes[currentNoteId].flashcards.map(flashcard => {
-              // Extra debug logging for each flashcard
-              if (flashcard.pageNumber) {
-                console.log(`Flashcard with page ${flashcard.pageNumber}: Image ${!!flashcard.pageImage ? 'exists' : 'missing'}, Length: ${flashcard.pageImage?.length || 0}`);
-                if (flashcard.pageImage) {
-                  console.log(`Image data starts with: ${flashcard.pageImage.substring(0, 30)}...`);
-                }
-              }
-              
-              return {
-                ...flashcard,
-                // Ensure pageImage is a string if it exists
-                pageImage: flashcard.pageImage || undefined
-              };
-            })}
-            onClose={() => setShowFlashcardModal(false)}
-            onUpdate={(flashcards) => {
-              if (currentNoteId) {
-                handleSaveFlashcards(currentNoteId, flashcards);
-              }
+            key={`flashcard-modal-${reviewIndex}`}
+            flashcards={reviewQueue} 
+            currentIndex={reviewIndex}
+            totalCardsInSession={reviewSessionOriginalCount} 
+            onClose={() => { 
+              console.log("[Modal Close] Closing and clearing session state.");
+              setShowFlashcardModal(false);
+              setReviewQueue([]); 
+              setReviewIndex(0);
+              setNewCardIdsInQueue(new Set());
+              setCardGoodCounts({});
+              setReviewSessionOriginalCount(0);
+              setSessionNewCount(0);
+              setSessionDueCount(0);
             }}
+            onUpdate={(updatedFlashcards) => { 
+              console.warn('[App] FlashcardModal onUpdate called - check if still needed');
+            }}
+            onResponse={handleFlashcardResponse} 
+            onPrevious={handlePreviousCard}      
+            sessionNewCount={sessionNewCount}
+            sessionDueCount={sessionDueCount}
           />
         )}
+        {/* -------------------------------- */}
 
         {/* Restore View Content */}
         {currentView === 'home' ? (
@@ -1250,10 +1676,8 @@ function App() {
             </div>
           </div>
         ) : null}
-         {/* <h1>Testing Layout...</h1> */}
       </div>
     </Layout>
-    // <h1>Hello World - Test</h1>
   );
 }
 

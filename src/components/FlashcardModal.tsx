@@ -1,18 +1,33 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { X, ChevronLeft, ChevronRight, Check, HelpCircle, Eye, Type } from 'lucide-react';
+import { X, ChevronLeft, Check, HelpCircle, Eye, Type, RotateCcw } from 'lucide-react';
 import { Flashcard } from '../types';
 import axios from 'axios';
 
 interface FlashcardModalProps {
   flashcards: Flashcard[];
+  currentIndex: number;
+  totalCardsInSession: number;
   onClose: () => void;
   onUpdate: (flashcards: Flashcard[]) => void;
+  onResponse: (response: 'again' | 'good') => void;
+  onPrevious: () => void;
+  sessionNewCount: number;
+  sessionDueCount: number;
 }
 
 type ReviewMode = 'classic' | 'input';
 
-export function FlashcardModal({ flashcards, onClose, onUpdate }: FlashcardModalProps) {
-  const [currentIndex, setCurrentIndex] = useState(0);
+export function FlashcardModal({ 
+  flashcards, 
+  currentIndex,
+  totalCardsInSession,
+  onClose, 
+  onUpdate, 
+  onResponse, 
+  onPrevious,
+  sessionNewCount,
+  sessionDueCount
+}: FlashcardModalProps) {
   const [isFlipped, setIsFlipped] = useState(false);
   const [position, setPosition] = useState({ x: 0, y: 0 });
   const [isDragging, setIsDragging] = useState(false);
@@ -23,7 +38,7 @@ export function FlashcardModal({ flashcards, onClose, onUpdate }: FlashcardModal
   const [isCheckingAnswer, setIsCheckingAnswer] = useState(false);
 
   // Add state for resizing
-  const [size, setSize] = useState({ width: 600, height: 450 });
+  const [size, setSize] = useState({ width: 800, height: 600 });
   const [isResizing, setIsResizing] = useState(false);
   const resizeStartPos = useRef({ x: 0, y: 0 });
   const resizeStartSize = useRef({ width: 0, height: 0 });
@@ -44,19 +59,34 @@ export function FlashcardModal({ flashcards, onClose, onUpdate }: FlashcardModal
     }
   }, []);
 
-  const handleNext = () => {
+  // Improved version of the reset flip state effect
+  useEffect(() => {
+    console.log(`[FlashcardModal] currentIndex changed to: ${currentIndex}. Resetting isFlipped to false.`);
+    
+    // Force immediate reset of flip state
     setIsFlipped(false);
+    
+    // Clear other related state
     setFeedback(null);
     setAnswerInput('');
-    setCurrentIndex((prev) => (prev + 1) % flashcards.length);
-  };
+    
+    // Re-focus input in input mode
+    if (reviewMode === 'input' && inputRef.current) {
+      setTimeout(() => {
+        if (inputRef.current) {
+          inputRef.current.focus();
+        }
+      }, 50);
+    }
+  }, [currentIndex, reviewMode]);
 
-  const handlePrevious = () => {
+  // Add a forced reset when the whole queue changes
+  useEffect(() => {
+    console.log(`[FlashcardModal] flashcards array changed (length: ${flashcards.length}). Resetting state.`);
     setIsFlipped(false);
     setFeedback(null);
     setAnswerInput('');
-    setCurrentIndex((prev) => (prev - 1 + flashcards.length) % flashcards.length);
-  };
+  }, [flashcards]);
 
   const handleDragStart = (e: React.MouseEvent) => {
     // Prevent drag start if clicking on the resize handle
@@ -89,10 +119,17 @@ export function FlashcardModal({ flashcards, onClose, onUpdate }: FlashcardModal
     if (e.key === ' ' && reviewMode === 'classic' && !isFlipped) {
       e.preventDefault();
       setIsFlipped(true);
-    } else if (e.key === 'ArrowRight') {
-      handleNext();
     } else if (e.key === 'ArrowLeft') {
-      handlePrevious();
+      onPrevious();
+    } else if (isFlipped) {
+      switch (e.key) {
+        case '1':
+          onResponse('again');
+          break;
+        case '2':
+          onResponse('good');
+          break;
+      }
     }
   };
 
@@ -161,7 +198,7 @@ export function FlashcardModal({ flashcards, onClose, onUpdate }: FlashcardModal
       const currentCard = flashcards[currentIndex];
       
       // Call the API endpoint to evaluate the answer
-      const response = await axios.post('/api/check-flashcard-answer', {
+      const response = await axios.post('http://localhost:3000/api/check-flashcard-answer', {
         userAnswer: answerInput.trim(),
         correctAnswer: currentCard.back,
         flashcardContent: currentCard
@@ -255,21 +292,22 @@ export function FlashcardModal({ flashcards, onClose, onUpdate }: FlashcardModal
     };
   }, [reviewMode, isFlipped]);
 
-  if (flashcards.length === 0) {
-    return null;
+  if (flashcards.length === 0 || currentIndex >= flashcards.length) {
+    // Handle cases where index might be out of bounds briefly
+    return null; 
   }
 
   const currentCard = flashcards[currentIndex];
 
   // Function to render the back content consistently
   const renderBackContent = () => {
-    // Debug log to check if the card has page images
-    console.log(`Rendering back content for card ${currentIndex + 1}:`, {
+    // Fix console log to stringify the object
+    console.log(`Rendering back content for card ${currentIndex + 1}:`, JSON.stringify({
       hasPageNumber: !!currentCard.pageNumber,
       pageNumber: currentCard.pageNumber,
       hasPageImage: !!currentCard.pageImage,
       imageLength: currentCard.pageImage?.length || 0
-    });
+    }));
     
     return (
       <>
@@ -331,6 +369,10 @@ export function FlashcardModal({ flashcards, onClose, onUpdate }: FlashcardModal
     );
   };
 
+  // --- Calculate derived state for UI --- 
+  const remainingCount = totalCardsInSession - currentIndex; // Simple remaining count
+  const progressPercent = totalCardsInSession > 0 ? (currentIndex / totalCardsInSession) * 100 : 0;
+
   return (
     <div 
       className="fixed inset-0 z-50 pointer-events-none" 
@@ -347,12 +389,11 @@ export function FlashcardModal({ flashcards, onClose, onUpdate }: FlashcardModal
           top: `${position.y}px`,
           width: `${size.width}px`, // Apply size state
           height: `${size.height}px`, // Apply size state
-          minWidth: '450px', // Min width
-          minHeight: '400px', // Min height
+          minWidth: '800px', 
+          minHeight: '600px', 
           cursor: isDragging ? 'grabbing' : 'default',
           transition: isDragging || isResizing ? 'none' : 'transform 0.15s ease-out'
         }}
-        // Removed onMouseDown/onMouseUp from here, applied to header for dragging
       >
         {/* Header with drag handle */}
         <div 
@@ -360,8 +401,8 @@ export function FlashcardModal({ flashcards, onClose, onUpdate }: FlashcardModal
           onMouseDown={handleDragStart} // Dragging starts here
           onMouseUp={handleDragEnd} // Drag ends here
         >
-          <h2 className="text-lg font-bold text-gray-800"> {/* Reduced font size */}
-            Flashcard {currentIndex + 1} of {flashcards.length}
+          <h2 className="text-lg font-bold text-gray-800"> 
+            Flashcard {flashcards.length > 0 ? currentIndex + 1 : 0} of {flashcards.length}
           </h2>
 
           <div className="flex items-center gap-2">
@@ -401,8 +442,26 @@ export function FlashcardModal({ flashcards, onClose, onUpdate }: FlashcardModal
               </button>
             </div>
             
+            {/* Moved "Back to Question" button - only visible when flipped */}
+            {isFlipped && (
+              <button
+                onClick={() => {
+                  setIsFlipped(false);
+                  setFeedback(null);
+                  if (reviewMode === 'input') {
+                    setAnswerInput('');
+                  }
+                }}
+                title="Back to Question"
+                className="p-1.5 hover:bg-gray-100 rounded-full text-gray-600 hover:text-gray-800"
+              >
+                <RotateCcw className="w-5 h-5" />
+              </button>
+            )}
+            
             <button
               onClick={onClose}
+              title="Close"
               className="p-1.5 hover:bg-gray-100 rounded-full"
             >
               <X className="w-5 h-5 text-gray-500" />
@@ -410,8 +469,30 @@ export function FlashcardModal({ flashcards, onClose, onUpdate }: FlashcardModal
           </div>
         </div>
 
+        {/* Progress Bar and Chips */}
+        <div className="px-4 pt-2 pb-3 border-b">
+          <div className="flex items-center justify-between text-xs text-gray-500 mb-1">
+            <span>Progress</span>
+            <span>{currentIndex} / {totalCardsInSession}</span>
+          </div>
+          <div className="w-full bg-gray-200 rounded-full h-1.5 mb-3">
+            <div 
+              className="bg-blue-500 h-1.5 rounded-full transition-all duration-300 ease-out"
+              style={{ width: `${progressPercent}%` }}
+            ></div>
+          </div>
+          <div className="flex items-center space-x-2">
+            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+              {sessionNewCount} New
+            </span>
+            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
+              {sessionDueCount} Review
+            </span>
+          </div>
+        </div>
+
         {/* Card Content Area - Takes remaining space */}
-        <div className="flex-grow p-4 overflow-hidden" /* Adjusted padding */ > 
+        <div className="flex-grow p-4 overflow-hidden"> 
           <div className={`
             transform transition-all duration-300 ease-in-out
             relative rounded-xl shadow-lg overflow-hidden h-full
@@ -420,11 +501,13 @@ export function FlashcardModal({ flashcards, onClose, onUpdate }: FlashcardModal
           `}
           style={{ perspective: '1000px' }}>
             {/* Front Face */}
-            <div className={`
-              absolute inset-0 w-full h-full 
-              ${isFlipped ? 'hidden' : 'block'}
-              flex flex-col p-6
-            `}>
+            <div 
+              className={`
+                absolute inset-0 w-full h-full flex flex-col p-6
+                ${isFlipped ? 'hidden' : 'block'}
+              `}
+              key={`front-${currentIndex}`}
+            >
               <div className="flex-grow flex flex-col items-center justify-center">
                 <h3 className="text-xl font-semibold text-center text-gray-800 mb-6">
                   {currentCard.front}
@@ -483,13 +566,15 @@ export function FlashcardModal({ flashcards, onClose, onUpdate }: FlashcardModal
             </div>
 
             {/* Back Face */}
-            <div className={`
-              absolute inset-0 w-full h-full
-              ${isFlipped ? 'block' : 'hidden'}
-              flex flex-col p-6
-            `}>
+            <div 
+              className={`
+                absolute inset-0 w-full h-full flex flex-col p-6
+                ${isFlipped ? 'block' : 'hidden'}
+              `}
+              key={`back-${currentIndex}`}
+            >
               {/* Scrollable content area for the back */}
-              <div className="flex-1 overflow-y-auto pr-2"> 
+              <div className="flex-1 overflow-y-auto pr-2 mb-4"> {/* Add margin-bottom */}
                 {/* Show feedback only in input mode */}
                 {reviewMode === 'input' && feedback && (
                   <div className="prose prose-sm max-w-none mb-4 pb-4 border-b border-gray-200">
@@ -503,18 +588,31 @@ export function FlashcardModal({ flashcards, onClose, onUpdate }: FlashcardModal
                 {renderBackContent()} 
               </div>
               
-              <button
-                onClick={() => {
-                  setIsFlipped(false);
-                  setFeedback(null);
-                  if (reviewMode === 'input') {
-                    setAnswerInput('');
-                  }
-                }}
-                className="mt-4 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 self-center"
-              >
-                Back to Question
-              </button>
+              {/* Anki-Style Response Buttons Area */}
+              <div className="flex-shrink-0 mt-auto pt-4 border-t border-gray-200">
+                 {/* Use Grid for responsive layout */}
+                 <div className="grid grid-cols-2 gap-4">
+                   {/* Again Button */}
+                   <button 
+                     onClick={() => onResponse('again')}
+                     className="flex flex-col items-center justify-center w-full px-3 py-3 rounded-lg text-white font-semibold text-sm focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-opacity-50 transition-colors duration-150 bg-red-600 hover:bg-red-700"
+                     title="Show again soon (Press 1)"
+                   >
+                     <span>Again</span>
+                     <span className="text-xs opacity-80">&lt;1m</span>
+                   </button>
+                   
+                   {/* Good Button */} 
+                   <button 
+                     onClick={() => onResponse('good')}
+                     className="flex flex-col items-center justify-center w-full px-3 py-3 rounded-lg text-white font-semibold text-sm focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-opacity-50 transition-colors duration-150 bg-green-600 hover:bg-green-700"
+                     title="Correct, check again later (Press 2)" // Updated title
+                   >
+                     <span>Good</span>
+                      {/* Can optionally show goodCount here later if needed */}
+                   </button>
+                 </div>
+              </div>
             </div>
           </div>
         </div>
@@ -522,22 +620,17 @@ export function FlashcardModal({ flashcards, onClose, onUpdate }: FlashcardModal
         {/* Navigation Controls */}
         <div className="flex items-center justify-between mt-4 p-4 border-t flex-shrink-0"> {/* Adjusted padding */}
           <button
-            onClick={handlePrevious}
+            onClick={onPrevious}
             className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 rounded-md hover:bg-gray-200"
+            disabled={currentIndex === 0}
           >
             <ChevronLeft className="w-4 h-4" />
             Previous
           </button>
           <div className="text-sm text-gray-500">
-            {currentIndex + 1} / {flashcards.length}
+            {flashcards.length > 0 ? currentIndex + 1 : 0} / {flashcards.length}
           </div>
-          <button
-            onClick={handleNext}
-            className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 rounded-md hover:bg-gray-200"
-          >
-            Next
-            <ChevronRight className="w-4 h-4" />
-          </button>
+          <div className="w-[100px]"></div>
         </div>
 
         {/* Resize Handle */}

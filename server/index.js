@@ -16,7 +16,7 @@ const app = express();
 const port = process.env.PORT || 3000;
 
 app.use(cors({
-  origin: ['http://localhost:5173', 'http://127.0.0.1:5173'],
+  origin: ['http://localhost:5173', 'http://127.0.0.1:5173', 'http://localhost:5174', 'http://127.0.0.1:5174'],
   methods: ['GET', 'POST', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
   credentials: true,
@@ -32,6 +32,31 @@ const ttsClient = new TextToSpeechClient({
 });
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
+
+// --- In-Memory Storage for Flashcard Progress (Replace with DB) ---
+// Structure: { "userId": { "flashcardId": { ease, intervalDays, dueDate, ... } } }
+const flashcardProgressStore = {}; 
+
+// --- Helper Functions ---
+
+// Get today's date in YYYY-MM-DD format
+function getTodayDateString() {
+  const today = new Date();
+  const year = today.getFullYear();
+  const month = String(today.getMonth() + 1).padStart(2, '0'); // Months are 0-indexed
+  const day = String(today.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+// Add days to a date string (YYYY-MM-DD)
+function addDaysToDate(dateString, days) {
+  const date = new Date(dateString);
+  date.setDate(date.getDate() + days);
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
 
 app.get('/', (req, res) => {
   res.json({ 
@@ -420,6 +445,134 @@ Return ONLY valid JSON without markdown formatting, code blocks, or explanations
       feedback: "Sorry, there was a problem evaluating your answer."
     });
   }
+});
+
+// --- NEW SRS Endpoints ---
+
+// Endpoint for submitting flashcard response
+app.post('/api/flashcard/response', async (req, res) => {
+  const { userId, flashcardId, noteId, response } = req.body;
+  const today = getTodayDateString();
+
+  if (!userId || !flashcardId || !noteId || !['again', 'hard', 'good', 'easy'].includes(response)) {
+    console.warn('❌ Invalid payload for /api/flashcard/response:', req.body);
+    return res.status(400).json({ error: 'Missing or invalid userId, flashcardId, noteId, or response' });
+  }
+
+  console.log(`📝 Received response: User=${userId}, Note=${noteId}, Card=${flashcardId}, Response=${response}`);
+
+  // Ensure user exists in the store
+  if (!flashcardProgressStore[userId]) {
+    flashcardProgressStore[userId] = {};
+  }
+
+  // Get current progress or set defaults if it's the first time
+  let progress = flashcardProgressStore[userId][flashcardId];
+  const isNewCard = !progress;
+
+  if (isNewCard) {
+    progress = {
+      noteId: noteId, // Store noteId
+      ease: 250,
+      intervalDays: 0,
+      dueDate: today,
+      lastReviewed: null,
+      repetitions: 0,
+      state: 'learning' 
+    };
+    console.log(`✨ New card progress created for User=${userId}, Note=${noteId}, Card=${flashcardId}`);
+  } else {
+     // Ensure noteId is present (for older records if schema changes)
+     progress.noteId = progress.noteId || noteId; 
+     progress.intervalDays = Number(progress.intervalDays) || 0;
+     progress.ease = Number(progress.ease) || 250;
+     progress.repetitions = Number(progress.repetitions) || 0;
+  }
+
+  // Apply SM-2 logic based on response
+  switch (response) {
+    case 'again':
+      progress.intervalDays = 0.0007; // ~1 minute
+      progress.ease -= 20;
+      progress.repetitions = 0;
+      progress.state = 'learning';
+      break;
+    case 'hard':
+      progress.intervalDays = progress.intervalDays * 1.2;
+      progress.ease -= 15;
+      progress.state = 'reviewing';
+      break;
+    case 'good':
+      if (isNewCard || progress.state === 'learning') {
+        progress.intervalDays = 1;
+        progress.state = 'reviewing';
+      } else {
+        progress.intervalDays = progress.intervalDays * (progress.ease / 100);
+      }
+      progress.repetitions += 1;
+      break;
+    case 'easy':
+       if (isNewCard || progress.state === 'learning') {
+         progress.intervalDays = 4;
+         progress.state = 'reviewing';
+       } else {
+         progress.intervalDays = progress.intervalDays * (progress.ease / 100) * 1.3;
+       }
+       progress.ease += 15;
+       progress.repetitions += 1;
+       break;
+  }
+
+  progress.ease = Math.max(130, Math.min(300, progress.ease));
+
+  if (response !== 'again' && progress.intervalDays < 1) {
+    progress.intervalDays = 1;
+  }
+
+  progress.dueDate = addDaysToDate(today, Math.ceil(progress.intervalDays));
+  progress.lastReviewed = today;
+
+  // Save updated progress back
+  flashcardProgressStore[userId][flashcardId] = progress;
+
+  console.log(`✅ Updated progress: User=${userId}, Note=${noteId}, Card=${flashcardId}`, progress);
+
+  res.status(200).json({
+    status: 'ok',
+    updatedProgress: progress
+  });
+});
+
+// Rename endpoint and update logic
+app.get('/api/flashcards/progress', async (req, res) => {
+  const { userId, noteId } = req.query;
+  const today = getTodayDateString();
+
+  if (!userId || !noteId) {
+    return res.status(400).json({ error: 'userId and noteId query parameters are required' });
+  }
+
+  console.log(`🔎 Fetching ALL card progress for User=${userId}, Note=${noteId}`);
+
+  const userProgressStore = flashcardProgressStore[userId];
+  if (!userProgressStore) {
+    console.log(`🤷 No progress found for User=${userId}. Returning empty list.`);
+    return res.status(200).json([]); 
+  }
+
+  const noteProgressList = [];
+  for (const flashcardId in userProgressStore) {
+    const progress = userProgressStore[flashcardId];
+    if (progress.noteId === noteId) {
+        noteProgressList.push({ 
+            flashcardId: flashcardId, 
+            ...progress 
+        });
+    }
+  }
+  
+  console.log(`✅ Found ${noteProgressList.length} progress record(s) for User=${userId}, Note=${noteId}`);
+  res.status(200).json(noteProgressList);
 });
 
 async function startServer() {
