@@ -7,6 +7,13 @@ export default defineConfig({
     exclude: ['lucide-react'],
   },
   server: {
+    proxy: {
+      '/api': {
+        target: 'http://localhost:3000',
+        changeOrigin: true,
+        secure: false
+      }
+    },
     fs: { allow: ['.'] },
     historyApiFallback: true
   }

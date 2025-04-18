@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Menu, Sparkles, ChevronLeft } from 'lucide-react';
+import React, { useState, useRef, useEffect } from 'react';
+import { Menu, Sparkles, ChevronLeft, GripVertical } from 'lucide-react';
 import { Sidebar } from './Sidebar';
 import { SavedNote, FileStatus } from '../types';
 
@@ -29,6 +29,44 @@ export function Layout({
   toolsContent
 }: LayoutProps) {
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  const [rightSidebarWidth, setRightSidebarWidth] = useState(350);
+  const [isResizing, setIsResizing] = useState(false);
+  const resizeRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!isResizing) return;
+
+      const containerRight = document.body.clientWidth;
+      const newWidth = containerRight - e.clientX;
+      
+      // Enforce min/max width constraints
+      const clampedWidth = Math.min(Math.max(newWidth, 250), 700);
+      setRightSidebarWidth(clampedWidth);
+    };
+
+    const handleMouseUp = () => {
+      setIsResizing(false);
+      document.body.style.cursor = 'default';
+      document.body.style.userSelect = 'auto';
+    };
+
+    if (isResizing) {
+      document.addEventListener('mousemove', handleMouseMove);
+      document.addEventListener('mouseup', handleMouseUp);
+      document.body.style.cursor = 'col-resize';
+      document.body.style.userSelect = 'none';
+    }
+
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [isResizing]);
+
+  const startResizing = () => {
+    setIsResizing(true);
+  };
 
   return (
     <div className="flex h-screen bg-white">
@@ -113,12 +151,29 @@ export function Layout({
 
           {/* Right panel - only show when viewing a note */}
           {currentView === 'note' && currentNoteId && (
-            <div className="hidden lg:block w-80 border-l border-gray-100 bg-white overflow-y-auto">
-              <div className="p-4 sticky top-0">
-                <h3 className="font-medium text-gray-900 mb-4">Tools</h3>
-                {toolsContent}
+            <>
+              {/* Resize handle */}
+              <div
+                ref={resizeRef}
+                className="w-1 bg-gray-200 hover:bg-blue-500 cursor-col-resize relative group"
+                onMouseDown={startResizing}
+              >
+                <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 p-1 rounded bg-white shadow-sm opacity-0 group-hover:opacity-100 transition-opacity">
+                  <GripVertical className="w-4 h-4 text-gray-500" />
+                </div>
               </div>
-            </div>
+
+              {/* Right sidebar */}
+              <div 
+                className="border-l border-gray-100 bg-white overflow-y-auto"
+                style={{ width: `${rightSidebarWidth}px` }}
+              >
+                <div className="p-4 sticky top-0">
+                  <h3 className="font-medium text-gray-900 mb-4">Tools</h3>
+                  {toolsContent}
+                </div>
+              </div>
+            </>
           )}
         </div>
       </div>

@@ -75,6 +75,11 @@ export interface AudioData {
   generatedAt: number;
 }
 
+export interface Flashcard {
+  front: string;
+  back: string;
+}
+
 export interface SavedNote {
   id: string;
   noteId: string;
@@ -96,6 +101,7 @@ export interface SavedNote {
     concise?: AudioData;
     detailed?: AudioData;
   };
+  flashcards?: Flashcard[];
 }
 
 export interface FileStatus {

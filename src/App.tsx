@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Save, Download, Sparkles, Volume2 } from 'lucide-react';
+import { Save, Download, Sparkles, Volume2, BookOpen } from 'lucide-react';
 import { Toaster, toast } from 'sonner';
 import { Layout } from './components/Layout';
 import { FileUpload } from './components/FileUpload';
@@ -12,11 +12,13 @@ import { processPDF } from './lib/pdfProcessor';
 import { transcribeMedia } from './lib/transcribeMedia';
 import { generateNotes } from './lib/geminiProcessor';
 import { generateAudio } from './lib/audioGenerator';
+import { generateFlashcards } from './lib/flashcardGenerator';
 import { checkForDuplicateNotes, validateContent } from './lib/contentValidation';
 import { AudioPlayer } from './components/AudioPlayer';
 import { AudioGenerateModal } from './components/AudioGenerateModal';
+import { FlashcardModal } from './components/FlashcardModal';
 import { NoteRenderer } from './components/NoteRenderer';
-import { LearningIntent, ExamPrepStyle, ResearchStyle, ProcessingResult, SavedNote, NoteBlock } from './types';
+import { LearningIntent, ExamPrepStyle, ResearchStyle, ProcessingResult, SavedNote, NoteBlock, Flashcard } from './types';
 
 const DEMO_USER_ID = 'demo_user';
 
@@ -50,6 +52,8 @@ function App() {
   const [showAudioModal, setShowAudioModal] = useState(false);
   const [isGeneratingAudio, setIsGeneratingAudio] = useState(false);
   const [currentAudioStyle, setCurrentAudioStyle] = useState<'concise' | 'detailed' | null>(null);
+  const [showFlashcardModal, setShowFlashcardModal] = useState(false);
+  const [isGeneratingFlashcards, setIsGeneratingFlashcards] = useState(false);
 
   const noteSaver = new NoteSaver(DEMO_USER_ID);
 
@@ -143,7 +147,6 @@ function App() {
 
   const handleFilesChange = (newFiles: File[]) => {
     try {
-      // Combine existing and new files, up to the limit of 3
       const combinedFiles = [...files, ...newFiles].slice(0, 3);
       const metadata = processFiles(combinedFiles);
       setFiles(combinedFiles);
@@ -420,6 +423,35 @@ function App() {
             Generate Audio Lecture
           </button>
 
+          <button
+            onClick={async () => {
+              try {
+                setIsGeneratingFlashcards(true);
+                const note = savedNotes[currentNoteId];
+                const flashcards = await generateFlashcards({
+                  noteContent: note.current.content,
+                  rawText: note.files[0]?.content
+                });
+                
+                await noteSaver.updateNote(currentNoteId, note.current.content, undefined, undefined, flashcards);
+                const notes = noteSaver.loadNotesFromStorage();
+                setSavedNotes(notes);
+                setShowFlashcardModal(true);
+                toast.success('Flashcards generated successfully');
+              } catch (error) {
+                console.error('Failed to generate flashcards:', error);
+                toast.error('Failed to generate flashcards');
+              } finally {
+                setIsGeneratingFlashcards(false);
+              }
+            }}
+            disabled={isGeneratingFlashcards}
+            className="w-full flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium text-white bg-green-600 rounded-md hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <BookOpen className="w-4 h-4" />
+            Generate Flashcards
+          </button>
+
           {savedNotes[currentNoteId].audio?.concise && (
             <AudioPlayer
               audio={savedNotes[currentNoteId].audio.concise}
@@ -434,6 +466,23 @@ function App() {
               onRegenerate={() => handleGenerateAudio('detailed')}
               isRegenerating={isGeneratingAudio && currentAudioStyle === 'detailed'}
             />
+          )}
+
+          {savedNotes[currentNoteId].flashcards && (
+            <div className="p-4 bg-gray-50 rounded-lg border border-gray-200">
+              <div className="flex items-center justify-between mb-2">
+                <h4 className="font-medium text-gray-900">Flashcards</h4>
+                <span className="text-sm text-gray-500">
+                  {savedNotes[currentNoteId].flashcards.length} cards
+                </span>
+              </div>
+              <button
+                onClick={() => setShowFlashcardModal(true)}
+                className="w-full mt-2 px-3 py-1.5 text-sm text-gray-700 bg-white border border-gray-200 rounded hover:bg-gray-50"
+              >
+                Review Flashcards
+              </button>
+            </div>
           )}
         </div>
       ) : null}
@@ -462,6 +511,13 @@ function App() {
             onClose={() => setShowAudioModal(false)}
             onGenerate={handleGenerateAudio}
             isGenerating={isGeneratingAudio}
+          />
+        )}
+
+        {showFlashcardModal && savedNotes[currentNoteId]?.flashcards && (
+          <FlashcardModal
+            flashcards={savedNotes[currentNoteId].flashcards}
+            onClose={() => setShowFlashcardModal(false)}
           />
         )}
 

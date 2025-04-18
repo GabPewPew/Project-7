@@ -1,5 +1,5 @@
 import JSZip from 'jszip';
-import { AudioData, NoteBlock } from '../types';
+import { AudioData, NoteBlock, Flashcard } from '../types';
 import { markdownToNoteBlocks } from './markdownToBlocks';
 
 export interface NoteMetadata {
@@ -48,6 +48,7 @@ export class NoteSaver {
       concise?: AudioData;
       detailed?: AudioData;
     };
+    flashcards?: Flashcard[];
   }>;
 
   constructor(userId: string) {
@@ -78,7 +79,8 @@ export class NoteSaver {
             metadata: noteData.metadata,
             current: noteData.current,
             history: noteData.history || [],
-            audio: noteData.audio
+            audio: noteData.audio,
+            flashcards: noteData.flashcards
           });
 
           notes[noteId] = {
@@ -92,7 +94,8 @@ export class NoteSaver {
             current: noteData.current,
             history: noteData.history || [],
             files: noteData.files || [],
-            audio: noteData.audio
+            audio: noteData.audio,
+            flashcards: noteData.flashcards
           };
         }
       });
@@ -113,7 +116,8 @@ export class NoteSaver {
           current: note.current,
           history: note.history,
           files: note.files.map(f => ({ fileName: f.name })),
-          audio: note.audio
+          audio: note.audio,
+          flashcards: note.flashcards
         };
       });
       localStorage.setItem(this.getStorageKey(), JSON.stringify(notesData));
@@ -184,7 +188,8 @@ export class NoteSaver {
     noteId: string,
     content: string,
     files?: File[],
-    blocks?: NoteBlock[]
+    blocks?: NoteBlock[],
+    flashcards?: Flashcard[]
   ): Promise<void> {
     const note = this.notes.get(noteId);
     if (!note) {
@@ -212,6 +217,10 @@ export class NoteSaver {
 
     if (files) {
       note.files = files;
+    }
+
+    if (flashcards) {
+      note.flashcards = flashcards;
     }
 
     this.saveToStorage();
@@ -292,7 +301,8 @@ export class NoteSaver {
         version: v.version,
         updatedAt: v.updatedAt
       })),
-      audio: note.audio
+      audio: note.audio,
+      flashcards: note.flashcards
     }, null, 2));
 
     return await zip.generateAsync({ type: 'blob' });
