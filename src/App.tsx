@@ -24,13 +24,19 @@ import { extractMultiplePageImages, extractPageImage, createBasicPdf } from './l
 import { getFileContent, getExtractedText } from './lib/fileStorage';
 import axios from 'axios';
 import generateAnkiPackage from './lib/ankiExport';
+import ReviewSession from './components/ReviewSession';
+import BrowseView from './components/BrowseView';
+import { migrateFlashcards } from './lib/flashcardMigration';
 // import { throttle } from './lib/utils'; // Assuming this exists
 
 const DEMO_USER_ID = 'demo_user';
 
+// Define the possible response values explicitly, matching the modal
+type FlashcardResponse = 'again' | 'hard' | 'good' | 'easy';
+
 function App() {
   const [currentNoteId, setCurrentNoteId] = useState<string | null>(null);
-  const [currentView, setCurrentView] = useState<'home' | 'note' | 'all-notes'>('home');
+  const [currentView, setCurrentView] = useState<'home' | 'note' | 'all-notes' | 'flashcard-review' | 'browse-cards'>('home');
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [editorValue, setEditorValue] = useState('');
   const [files, setFiles] = useState<File[]>([]);
@@ -298,9 +304,9 @@ function App() {
       // Filter out null results and ensure content is valid
       const validResults = processedResults.filter(
         (result): result is NonNullable<typeof result> => 
-          result !== null && 
-          typeof result.content === 'string' && 
-          result.content.trim().length > 0
+        result !== null && 
+        typeof result.content === 'string' && 
+        result.content.trim().length > 0
       );
 
       if (validResults.length === 0) {
@@ -813,10 +819,10 @@ function App() {
   // Update Audio button based on generation status
   const renderAudioButton = () => {
     if (isGeneratingAudio) {
-      return (
-        <button
+  return (
+          <button
           disabled={true}
-          className="w-full flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="w-full flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
         >
           <Volume2 className="w-4 h-4" />
           Generating Audio...
@@ -840,10 +846,10 @@ function App() {
       <button
         onClick={() => setShowAudioModal(true)}
         className="w-full flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700"
-      >
-        <Volume2 className="w-4 h-4" />
-        Generate Audio Lecture
-      </button>
+          >
+            <Volume2 className="w-4 h-4" />
+            Generate Audio Lecture
+          </button>
     );
   };
 
@@ -863,12 +869,12 @@ function App() {
     
     if (currentNoteId && savedNotes[currentNoteId]?.flashcards && savedNotes[currentNoteId].flashcards.length > 0) {
       return (
-        <button
-          onClick={async () => {
+          <button
+            onClick={async () => {
             if (!currentNoteId) return;
-            try {
-              setIsGeneratingFlashcards(true);
-              const note = savedNotes[currentNoteId];
+              try {
+                setIsGeneratingFlashcards(true);
+                const note = savedNotes[currentNoteId];
               if (!note) return;
 
               // Retrieve the extracted text using the key from the note file metadata
@@ -882,8 +888,8 @@ function App() {
                 console.warn('[Flashcards] No extractedTextKey found for the primary file. Raw text context will be missing.');
               }
 
-              const flashcards = await generateFlashcards({
-                noteContent: note.current.content,
+                const flashcards = await generateFlashcards({
+                  noteContent: note.current.content,
                 rawText: rawTextContent
               });
               
@@ -932,20 +938,20 @@ function App() {
             
             // Save the flashcards first to ensure they're stored, then try to add images
             await handleSaveFlashcards(currentNoteId, flashcards, true);
-            toast.success('Flashcards generated successfully');
-          } catch (error) {
-            console.error('Failed to generate flashcards:', error);
-            toast.error('Failed to generate flashcards');
-          } finally {
-            setIsGeneratingFlashcards(false);
-          }
-        }}
-        disabled={isGeneratingFlashcards}
-        className="w-full flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium text-white bg-green-600 rounded-md hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
-      >
-        <BookOpen className="w-4 h-4" />
-        Generate Flashcards
-      </button>
+                toast.success('Flashcards generated successfully');
+              } catch (error) {
+                console.error('Failed to generate flashcards:', error);
+                toast.error('Failed to generate flashcards');
+              } finally {
+                setIsGeneratingFlashcards(false);
+              }
+            }}
+            disabled={isGeneratingFlashcards}
+            className="w-full flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium text-white bg-green-600 rounded-md hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <BookOpen className="w-4 h-4" />
+            Generate Flashcards
+          </button>
     );
   };
 
@@ -1021,114 +1027,63 @@ function App() {
     setReviewIndex(prev => Math.max(0, prev - 1));
   };
 
-  // --- REVISED: Flashcard Response Handling (Focus on State Update Order & Again Bug Fix) --- 
-  const handleFlashcardResponse = async (response: 'again' | 'good') => {
-    if (reviewIndex >= reviewQueue.length || !currentNoteId) return; // Safety checks
-
+  // Update handleFlashcardResponse to accept the new response types
+  // and call the correct backend endpoint
+  const handleFlashcardResponse = async (response: FlashcardResponse) => {
+    if (reviewIndex >= reviewQueue.length) {
+      console.warn('Attempted to respond when review queue is finished or index is out of bounds');
+      return;
+    }
+    if (!currentNoteId) {
+      console.error('Error: Cannot submit response, currentNoteId is not set.');
+      toast.error('Cannot save progress: Current note context is missing.');
+      return;
+    }
+    const noteId = currentNoteId;
     const currentCard = reviewQueue[reviewIndex];
-    // --- Get Stable ID --- 
-    const allCardsInNote = savedNotes[currentNoteId]?.flashcards || [];
-    const cardIndexInNote = allCardsInNote.findIndex(c => 
-        c.front === currentCard.front && 
-        c.back === currentCard.back
-    );
-    // Use a fallback ID if the original index isn't found, though this shouldn't happen
-    const flashcardId = cardIndexInNote >= 0 
-        ? `note_${currentNoteId}_card_${cardIndexInNote}` 
-        : `error_card_${Date.now()}`;
-    if (cardIndexInNote < 0) {
-       console.error(`[Review] Could not find original index for card:`, currentCard, `Using fallback ID: ${flashcardId}`);
-       // Don't necessarily return, try to proceed with fallback ID for local counts
-    }
-    // ---------------------
+    const isNew = newCardIdsInQueue.has(currentCard.id);
+    
+    console.log(`[Review] Handling response: '${response}' for card ID: ${currentCard.id} (Index: ${reviewIndex}, New: ${isNew}, Note: ${noteId})`);
 
-    let nextQueue = [...reviewQueue];
-    let nextGoodCounts = { ...cardGoodCounts };
-    let nextReviewIndex = reviewIndex; // Initialize with current index
+    try {
+      // Send response to the backend SRS endpoint
+      // Ensure DEMO_USER_ID and noteId are included
+      await axios.post(`http://localhost:3001/api/flashcard/response`, { 
+        userId: DEMO_USER_ID,
+        flashcardId: currentCard.id,
+        noteId: noteId, // Send the noteId associated with the card
+        response: response
+      });
+      
+      toast.success(`Response '${response}' recorded.`);
+      
+      // Update local state (if needed, e.g., remove card from queue if 'easy' on new?)
+      // Example: Update local counts
+      if (isNew && response !== 'again') {
+          setSessionNewCount(prev => Math.max(0, prev - 1));
+      } else if (!isNew && response !== 'again') {
+          setSessionDueCount(prev => Math.max(0, prev - 1));
+      }
+      
+      // Remove the card ID from the new card tracking set if it was new
+      if (isNew) {
+          newCardIdsInQueue.delete(currentCard.id);
+          setNewCardIdsInQueue(new Set(newCardIdsInQueue)); // Update state
+      }
 
-    console.log(`[Review Start] Action: ${response} | Current Index: ${reviewIndex} | Queue Length: ${reviewQueue.length} | Card ID: ${flashcardId}`);
-
-    if (response === 'again') {
-        nextGoodCounts[flashcardId] = 0; // Reset good count
-
-        // Remove card from current position
-        const cardToReinsert = nextQueue.splice(reviewIndex, 1)[0];
-
-        if (cardToReinsert) {
-            // Insert 2 positions ahead, capped at the end of the *new* length
-            const insertIndex = Math.min(reviewIndex + 2, nextQueue.length);
-            nextQueue.splice(insertIndex, 0, cardToReinsert);
-            console.log(`[Review Again] Reinserted '${flashcardId}' at index ${insertIndex}. New queue size: ${nextQueue.length}`);
-
-            // Index *stays the same* logically because the item at reviewIndex was removed.
-            // The next item to show is now at the original reviewIndex in the modified queue.
-            // No change needed to nextReviewIndex initially set to reviewIndex.
-            nextReviewIndex = reviewIndex; 
-        } else {
-            console.error(`[Review Again] Failed to remove card at index ${reviewIndex}. Advancing index to prevent stall.`);
-            nextReviewIndex = reviewIndex + 1; // Advance if removal failed
-        }
-
-    } else if (response === 'good') {
-        const currentGoodCount = cardGoodCounts[flashcardId] || 0;
-        const newGoodCount = currentGoodCount + 1;
-        nextGoodCounts[flashcardId] = newGoodCount;
-
-        if (newGoodCount >= 3) {
-            // Learned: remove card
-            console.log(`[Review Good] Card '${flashcardId}' learned (Count: ${newGoodCount}). Removing.`);
-            nextQueue.splice(reviewIndex, 1); // Remove from queue
-            // Index *stays the same* logically because the item was removed.
-            nextReviewIndex = reviewIndex;
-
-            // --- Send update to backend --- 
-            const isOriginallyNew = newCardIdsInQueue.has(flashcardId);
-            const updateType = isOriginallyNew ? "LEARNED (New)" : "REVIEWED (Due)";
-            console.log(` - Sending ${updateType} update to backend for ${flashcardId}`);
-            const payload = { flashcardId, userId: DEMO_USER_ID, noteId: currentNoteId, response: 'good' };
-            axios.post('http://localhost:3000/api/flashcard/response', payload)
-              .then(() => console.log(`   Backend update SUCCESS for ${flashcardId}`))
-              .catch(err => console.error(`   Backend update FAILED for ${flashcardId}:`, err));
-            
-            if (isOriginallyNew) {
-                setNewCardIdsInQueue(prev => { const next = new Set(prev); next.delete(flashcardId); return next; });
-            }
-            // Clean up local count AFTER potential backend call finishes (or immediately is fine too)
-            delete nextGoodCounts[flashcardId]; 
-            // ----------------------------- 
-
-        } else {
-            // Good, but not learned yet: Advance index
-            console.log(`[Review Good] Card '${flashcardId}' count updated (${newGoodCount}). Advancing.`);
-            nextReviewIndex = reviewIndex + 1;
-        }
-    }
-
-    // --- Determine Final State --- 
-    // Check if the queue is now empty
-    if (nextQueue.length === 0) {
-        console.log("[Review End] Session finished! Queue is empty.");
-        toast.success("Flashcard review complete!");
+      // Move to the next card
+      if (reviewIndex < reviewQueue.length - 1) {
+        setReviewIndex(prevIndex => prevIndex + 1);
+      } else {
+        // End of the session
         setShowFlashcardModal(false);
-        // Clear all session state
-        setReviewQueue([]);
-        setReviewIndex(0);
-        setCardGoodCounts({});
-        setNewCardIdsInQueue(new Set());
-        setSessionNewCount(0);
-        setSessionDueCount(0);
-        setReviewSessionOriginalCount(0);
-    } else {
-        // Clamp the calculated next index to valid bounds of the *final* queue
-        // IMPORTANT: The valid index range is 0 to nextQueue.length - 1
-        const finalNextIndex = Math.min(nextReviewIndex, nextQueue.length - 1); 
-
-        console.log(`[Review Update] Setting State - Next Index: ${finalNextIndex} | New Queue Length: ${nextQueue.length}`);
-
-        // Set state together to hopefully trigger a single re-render cycle for the update
-        setCardGoodCounts(nextGoodCounts);
-        setReviewQueue(nextQueue);
-        setReviewIndex(finalNextIndex); 
+        toast.info('Review session finished!');
+        // Optionally show a summary modal here
+      }
+    } catch (error) {
+      console.error('Failed to send flashcard response:', error);
+      toast.error(`Failed to record response '${response}'. Please try again.`);
+      // Decide how to handle error - maybe retry, or skip?
     }
   };
 
@@ -1143,7 +1098,7 @@ function App() {
     console.log('[Review Setup] Starting...');
     try {
       console.log(`Loading flashcard progress for note ${currentNoteId} from API...`);
-      const progressResponse = await axios.get<{ progress: Record<string, FlashcardProgress> }>(`http://localhost:3000/api/flashcards/progress?userId=${DEMO_USER_ID}&noteId=${currentNoteId}`);
+      const progressResponse = await axios.get<{ progress: Record<string, FlashcardProgress> }>(`http://localhost:3001/api/flashcards/progress?userId=${DEMO_USER_ID}&noteId=${currentNoteId}`);
       const currentProgress = progressResponse.data.progress || {}; 
       console.log(" - Fetched progress:", currentProgress);
 
@@ -1231,7 +1186,7 @@ function App() {
     try {
       console.log(`[Export] Starting export in format: ${format}`);
       // Fetch progress 
-      const progressResponse = await axios.get<{ progress: Record<string, FlashcardProgress> }>(`http://localhost:3000/api/flashcards/progress?userId=${DEMO_USER_ID}&noteId=${currentNoteId}`);
+      const progressResponse = await axios.get<{ progress: Record<string, FlashcardProgress> }>(`http://localhost:3001/api/flashcards/progress?userId=${DEMO_USER_ID}&noteId=${currentNoteId}`);
       const currentProgress = progressResponse.data.progress || {};
       const now = new Date().toISOString().split('T')[0];
       const allCardsInNote = savedNotes[currentNoteId].flashcards;
@@ -1387,6 +1342,138 @@ function App() {
     }
   };
 
+  const handleBrowseCardsClick = () => {
+    if (hasUnsavedChanges) {
+      if (window.confirm('You have unsaved changes. Are you sure you want to leave?')) {
+        setCurrentNoteId(null);
+        setCurrentView('browse-cards');
+        setHasUnsavedChanges(false);
+      }
+    } else {
+      setCurrentNoteId(null);
+      setCurrentView('browse-cards');
+    }
+  };
+
+  const handleReviewFlashcardsClick = () => {
+    if (hasUnsavedChanges) {
+      if (window.confirm('You have unsaved changes. Are you sure you want to leave?')) {
+        setCurrentNoteId(null);
+        setCurrentView('flashcard-review');
+        setHasUnsavedChanges(false);
+      }
+    } else {
+      setCurrentNoteId(null);
+      setCurrentView('flashcard-review');
+    }
+  };
+
+  // Function to migrate existing flashcards to the new system
+  const handleMigrateFlashcards = async () => {
+    try {
+      toast.info("Starting flashcard migration...");
+      const count = await migrateFlashcards(savedNotes);
+      toast.success(`Successfully migrated ${count} flashcards to the new spaced repetition system`);
+    } catch (error) {
+      console.error("Migration failed:", error);
+      toast.error("Failed to migrate flashcards. See console for details.");
+    }
+  };
+
+  // Function to render the tools panel content for the right sidebar
+  const renderToolsPanel = () => {
+    if (!currentNoteId || !savedNotes[currentNoteId]) return null;
+    
+    return (
+      <div className="space-y-4">
+        {renderAudioButton()}
+        {renderFlashcardButton()}
+
+        {currentNoteId && savedNotes[currentNoteId]?.audio?.concise && (
+            <AudioPlayer
+              audio={savedNotes[currentNoteId].audio.concise}
+              onRegenerate={() => handleGenerateAudio('concise')}
+              isRegenerating={isGeneratingAudio && currentAudioStyle === 'concise'}
+            />
+          )}
+
+        {currentNoteId && savedNotes[currentNoteId]?.audio?.detailed && (
+            <AudioPlayer
+              audio={savedNotes[currentNoteId].audio.detailed}
+              onRegenerate={() => handleGenerateAudio('detailed')}
+              isRegenerating={isGeneratingAudio && currentAudioStyle === 'detailed'}
+            />
+          )}
+
+        {currentNoteId && savedNotes[currentNoteId]?.flashcards && savedNotes[currentNoteId].flashcards.length > 0 && (
+            <div className="p-4 bg-gray-50 rounded-lg border border-gray-200">
+              <div className="flex items-center justify-between mb-2">
+                <h4 className="font-medium text-gray-900">Flashcards</h4>
+                <span className="text-sm text-gray-500">
+                  {savedNotes[currentNoteId].flashcards.length} cards
+                </span>
+              </div>
+              <button
+              onClick={startReviewSession} 
+                className="w-full mt-2 px-3 py-1.5 text-sm text-gray-700 bg-white border border-gray-200 rounded hover:bg-gray-50"
+              disabled={showFlashcardModal || isGeneratingFlashcards} 
+              >
+                Review Flashcards
+            </button>
+
+            {/* --- Export Dropdown --- */}
+            <div className="relative inline-block w-full mt-2">
+              <button
+                onClick={() => setShowExportOptions(prev => !prev)}
+                className="w-full px-3 py-1.5 text-sm text-gray-700 bg-white border border-gray-200 rounded hover:bg-gray-50 flex items-center justify-between"
+                disabled={!savedNotes[currentNoteId]?.flashcards?.length}
+              >
+                Export Flashcards
+                <svg className={`w-4 h-4 transition-transform duration-200 ${showExportOptions ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
+              </button>
+              {showExportOptions && (
+                <div className="absolute right-0 mt-1 w-full rounded-md shadow-lg bg-white ring-1 ring-black ring-opacity-5 focus:outline-none z-10">
+                  <div className="py-1" role="menu" aria-orientation="vertical" aria-labelledby="options-menu">
+                    <button
+                      onClick={() => handleExport('apkg')}
+                      className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 hover:text-gray-900"
+                      role="menuitem"
+                    >
+                      Export as .apkg (Anki)
+                    </button>
+                    <button
+                      onClick={() => handleExport('txt')}
+                      className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 hover:text-gray-900"
+                      role="menuitem"
+                    >
+                      Export as .txt
+                    </button>
+                    <button
+                      onClick={() => handleExport('pdf')}
+                      className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 hover:text-gray-900"
+                      role="menuitem"
+                    >
+                      Export as .pdf (Printable)
+              </button>
+                  </div>
+            </div>
+          )}
+        </div>
+            
+            <FlashcardPreview 
+              flashcards={savedNotes[currentNoteId].flashcards}
+              onSave={(flashcards) => {
+                if (currentNoteId) {
+                  handleSaveFlashcards(currentNoteId, flashcards)
+                }
+              }}
+            />
+          </div>
+        )}
+      </div>
+    );
+  };
+
   return (
     <Layout
       savedNotes={savedNotes}
@@ -1396,96 +1483,10 @@ function App() {
       onDeleteNote={handleDeleteNote}
       onHomeClick={handleHomeClick}
       onAllNotesClick={handleAllNotesClick}
+      onBrowseCardsClick={handleBrowseCardsClick}
+      onReviewFlashcardsClick={handleReviewFlashcardsClick}
       fileStatuses={fileStatuses}
-      toolsContent={currentNoteId && savedNotes[currentNoteId] ? (
-        <div className="space-y-4">
-          {renderAudioButton()}
-          {renderFlashcardButton()}
-
-          {currentNoteId && savedNotes[currentNoteId]?.audio?.concise && (
-            <AudioPlayer
-              audio={savedNotes[currentNoteId].audio.concise}
-              onRegenerate={() => handleGenerateAudio('concise')}
-              isRegenerating={isGeneratingAudio && currentAudioStyle === 'concise'}
-            />
-          )}
-
-          {currentNoteId && savedNotes[currentNoteId]?.audio?.detailed && (
-            <AudioPlayer
-              audio={savedNotes[currentNoteId].audio.detailed}
-              onRegenerate={() => handleGenerateAudio('detailed')}
-              isRegenerating={isGeneratingAudio && currentAudioStyle === 'detailed'}
-            />
-          )}
-
-          {currentNoteId && savedNotes[currentNoteId]?.flashcards && savedNotes[currentNoteId].flashcards.length > 0 && (
-            <div className="p-4 bg-gray-50 rounded-lg border border-gray-200">
-              <div className="flex items-center justify-between mb-2">
-                <h4 className="font-medium text-gray-900">Flashcards</h4>
-                <span className="text-sm text-gray-500">
-                  {savedNotes[currentNoteId].flashcards.length} cards
-                </span>
-              </div>
-              <button
-                onClick={startReviewSession} 
-                className="w-full mt-2 px-3 py-1.5 text-sm text-gray-700 bg-white border border-gray-200 rounded hover:bg-gray-50"
-                disabled={showFlashcardModal || isGeneratingFlashcards} 
-              >
-                Review Flashcards
-              </button>
-
-              {/* --- Export Dropdown --- */}
-              <div className="relative inline-block w-full mt-2"> {/* Added mt-2 */} 
-                <button
-                  onClick={() => setShowExportOptions(prev => !prev)}
-                  className="w-full px-3 py-1.5 text-sm text-gray-700 bg-white border border-gray-200 rounded hover:bg-gray-50 flex items-center justify-between"
-                  disabled={!savedNotes[currentNoteId]?.flashcards?.length}
-                >
-                  Export Flashcards
-                  <svg className={`w-4 h-4 transition-transform duration-200 ${showExportOptions ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
-                </button>
-                {showExportOptions && (
-                  <div className="absolute right-0 mt-1 w-full rounded-md shadow-lg bg-white ring-1 ring-black ring-opacity-5 focus:outline-none z-10">
-                    <div className="py-1" role="menu" aria-orientation="vertical" aria-labelledby="options-menu">
-                      <button
-                        onClick={() => handleExport('apkg')}
-                        className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 hover:text-gray-900"
-                        role="menuitem"
-                      >
-                        Export as .apkg (Anki)
-                      </button>
-                      <button
-                        onClick={() => handleExport('txt')}
-                        className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 hover:text-gray-900"
-                        role="menuitem"
-                      >
-                        Export as .txt
-                      </button>
-                      <button
-                        onClick={() => handleExport('pdf')}
-                        className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 hover:text-gray-900"
-                        role="menuitem"
-                      >
-                        Export as .pdf (Printable)
-                      </button>
-                    </div>
-                  </div>
-                )}
-              </div>
-              {/* ----------------------- */}
-              
-              <FlashcardPreview 
-                flashcards={savedNotes[currentNoteId].flashcards}
-                onSave={(flashcards) => {
-                  if (currentNoteId) {
-                    handleSaveFlashcards(currentNoteId, flashcards)
-                  }
-                }}
-              />
-            </div>
-          )}
-        </div>
-      ) : null}
+      toolsContent={currentNoteId && currentView === 'note' ? renderToolsPanel() : undefined}
     >
       <Toaster 
         position="top-right"
@@ -1636,6 +1637,7 @@ function App() {
           <AllNotesPage
             savedNotes={savedNotes}
             onNoteSelect={handleNoteSelect}
+            onDeleteNote={handleDeleteNote}
           />
         ) : currentNoteId && savedNotes[currentNoteId] ? (
           <div className="h-full" onKeyDown={handleKeyDown}>
@@ -1676,6 +1678,30 @@ function App() {
             </div>
           </div>
         ) : null}
+
+        {/* Flashcard Review View */}
+        {currentView === 'flashcard-review' && (
+          <ReviewSession
+            newLimit={20}
+            reviewLimit={100}
+            onClose={handleHomeClick}
+          />
+        )}
+
+        {/* Browse Cards View */}
+        {currentView === 'browse-cards' && (
+          <div>
+            <BrowseView />
+            <div className="mt-6 flex justify-center">
+              <button
+                onClick={handleMigrateFlashcards}
+                className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 mx-auto"
+              >
+                Migrate Existing Flashcards
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </Layout>
   );

@@ -22,7 +22,17 @@ export async function generateAudio(
   options: AudioGenerationOptions
 ): Promise<AudioGenerationResult> {
   try {
-    const response = await axios.post('http://localhost:3000/api/generate-audio', options);
+    const { style, voice, noteContent, rawText, userId, noteId, normalizedTitle } = options;
+
+    console.log(`🔊 Generating ${style} audio lecture...`);
+    const response = await axios.post('http://localhost:3001/api/generate-audio', {
+      userId,
+      noteId,
+      normalizedTitle,
+      style,
+      noteContent,
+      rawText,
+    });
     return response.data;
   } catch (error) {
     console.error('Failed to generate audio:', error);

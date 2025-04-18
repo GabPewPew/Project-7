@@ -1,0 +1,14 @@
+{
+  "learningStepsMinutes": [1, 10],
+  "relearningStepsMinutes": [10],
+  "graduatingIntervalDays": 1,
+  "easyIntervalDays": 4,
+  "initialEaseFactor": 2500,
+  "easyBonus": 1.3,
+  "hardIntervalMultiplier": 1.2,
+  "lapseEasePenalty": 200,
+  "lapseNewIntervalPercent": 0.7,
+  "minimumEaseFactor": 1300,
+  "intervalModifier": 1.0,
+  "maximumInterval": 36500
+} 

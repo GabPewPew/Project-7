@@ -3,13 +3,16 @@ import { X, ChevronLeft, Check, HelpCircle, Eye, Type, RotateCcw } from 'lucide-
 import { Flashcard } from '../types';
 import axios from 'axios';
 
+// Define the possible response values more explicitly
+type FlashcardResponse = 'again' | 'hard' | 'good' | 'easy';
+
 interface FlashcardModalProps {
   flashcards: Flashcard[];
   currentIndex: number;
   totalCardsInSession: number;
   onClose: () => void;
   onUpdate: (flashcards: Flashcard[]) => void;
-  onResponse: (response: 'again' | 'good') => void;
+  onResponse: (response: FlashcardResponse) => void;
   onPrevious: () => void;
   sessionNewCount: number;
   sessionDueCount: number;
@@ -127,7 +130,14 @@ export function FlashcardModal({
           onResponse('again');
           break;
         case '2':
+          // Map key '2' to 'hard'
+          onResponse('hard'); 
+          break;
+        case '3':
           onResponse('good');
+          break;
+        case '4':
+          onResponse('easy');
           break;
       }
     }
@@ -198,7 +208,7 @@ export function FlashcardModal({
       const currentCard = flashcards[currentIndex];
       
       // Call the API endpoint to evaluate the answer
-      const response = await axios.post('http://localhost:3000/api/check-flashcard-answer', {
+      const response = await axios.post('http://localhost:3001/api/check-flashcard-answer', {
         userAnswer: answerInput.trim(),
         correctAnswer: currentCard.back,
         flashcardContent: currentCard
@@ -459,13 +469,13 @@ export function FlashcardModal({
               </button>
             )}
             
-            <button
-              onClick={onClose}
+          <button
+            onClick={onClose}
               title="Close"
               className="p-1.5 hover:bg-gray-100 rounded-full"
-            >
-              <X className="w-5 h-5 text-gray-500" />
-            </button>
+          >
+            <X className="w-5 h-5 text-gray-500" />
+          </button>
           </div>
         </div>
 
@@ -588,31 +598,46 @@ export function FlashcardModal({
                 {renderBackContent()} 
               </div>
               
-              {/* Anki-Style Response Buttons Area */}
-              <div className="flex-shrink-0 mt-auto pt-4 border-t border-gray-200">
-                 {/* Use Grid for responsive layout */}
-                 <div className="grid grid-cols-2 gap-4">
-                   {/* Again Button */}
-                   <button 
-                     onClick={() => onResponse('again')}
-                     className="flex flex-col items-center justify-center w-full px-3 py-3 rounded-lg text-white font-semibold text-sm focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-opacity-50 transition-colors duration-150 bg-red-600 hover:bg-red-700"
-                     title="Show again soon (Press 1)"
-                   >
-                     <span>Again</span>
-                     <span className="text-xs opacity-80">&lt;1m</span>
-                   </button>
-                   
-                   {/* Good Button */} 
-                   <button 
-                     onClick={() => onResponse('good')}
-                     className="flex flex-col items-center justify-center w-full px-3 py-3 rounded-lg text-white font-semibold text-sm focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-opacity-50 transition-colors duration-150 bg-green-600 hover:bg-green-700"
-                     title="Correct, check again later (Press 2)" // Updated title
-                   >
-                     <span>Good</span>
-                      {/* Can optionally show goodCount here later if needed */}
-                   </button>
-                 </div>
-              </div>
+              {/* Buttons Section */}
+              {isFlipped && (
+                <div className="mt-4 flex flex-col sm:flex-row justify-around p-2 space-y-2 sm:space-y-0 sm:space-x-2">
+                  {/* Again Button */}
+                  <button
+                    onClick={() => onResponse('again')}
+                    className="flex-1 bg-red-500 hover:bg-red-600 text-white font-bold py-3 px-4 rounded-lg shadow transition duration-150 ease-in-out transform hover:scale-105 text-center"
+                  >
+                    Again <span className="text-sm font-normal">(Key 1)</span><br />
+                    <span className="text-xs font-normal">&lt;1m</span>
+                  </button>
+                  {/* Hard Button */}
+                  <button
+                    onClick={() => onResponse('hard')}
+                    className="flex-1 bg-orange-500 hover:bg-orange-600 text-white font-bold py-3 px-4 rounded-lg shadow transition duration-150 ease-in-out transform hover:scale-105 text-center"
+                  >
+                    Hard <span className="text-sm font-normal">(Key 2)</span><br />
+                    {/* TODO: Display dynamic interval if available */}
+                    {/* <span className="text-xs font-normal">&lt;6m</span> */}
+                  </button>
+                  {/* Good Button */}
+                  <button
+                    onClick={() => onResponse('good')}
+                    className="flex-1 bg-green-500 hover:bg-green-600 text-white font-bold py-3 px-4 rounded-lg shadow transition duration-150 ease-in-out transform hover:scale-105 text-center"
+                  >
+                    Good <span className="text-sm font-normal">(Key 3)</span><br />
+                     {/* TODO: Display dynamic interval if available */}
+                    {/* <span className="text-xs font-normal">&lt;10m</span> */}
+                  </button>
+                  {/* Easy Button */}
+                  <button
+                    onClick={() => onResponse('easy')}
+                    className="flex-1 bg-blue-500 hover:bg-blue-600 text-white font-bold py-3 px-4 rounded-lg shadow transition duration-150 ease-in-out transform hover:scale-105 text-center"
+                  >
+                    Easy <span className="text-sm font-normal">(Key 4)</span><br />
+                     {/* TODO: Display dynamic interval if available */}
+                    {/* <span className="text-xs font-normal">4d</span> */}
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         </div>

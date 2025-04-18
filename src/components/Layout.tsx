@@ -7,11 +7,13 @@ interface LayoutProps {
   children: React.ReactNode;
   savedNotes: Record<string, SavedNote>;
   currentNoteId: string | null;
-  currentView: 'home' | 'note' | 'all-notes';
+  currentView: 'home' | 'note' | 'all-notes' | 'flashcard-review' | 'browse-cards';
   onNoteSelect: (noteId: string) => void;
   onDeleteNote: (noteId: string) => void;
   onHomeClick: () => void;
   onAllNotesClick: () => void;
+  onBrowseCardsClick?: () => void;
+  onReviewFlashcardsClick?: () => void;
   fileStatuses: FileStatus[];
   toolsContent?: React.ReactNode;
 }
@@ -25,6 +27,8 @@ export function Layout({
   onDeleteNote,
   onHomeClick,
   onAllNotesClick,
+  onBrowseCardsClick,
+  onReviewFlashcardsClick,
   fileStatuses,
   toolsContent
 }: LayoutProps) {
@@ -131,6 +135,8 @@ export function Layout({
               onDeleteNote={onDeleteNote}
               onHomeClick={onHomeClick}
               onAllNotesClick={onAllNotesClick}
+              onBrowseCardsClick={onBrowseCardsClick}
+              onReviewFlashcardsClick={onReviewFlashcardsClick}
               isOpen={true}
               fileStatuses={fileStatuses}
             />

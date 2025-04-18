@@ -1,14 +1,26 @@
 import React from 'react';
-import { FileText, Calendar, Tag, File } from 'lucide-react';
+import { FileText, Calendar, Tag, File, Trash2 } from 'lucide-react';
 import { SavedNote } from '../types';
 
 interface AllNotesPageProps {
   savedNotes: Record<string, SavedNote>;
   onNoteSelect: (noteId: string) => void;
+  onDeleteNote: (noteId: string) => Promise<void>;
 }
 
-export function AllNotesPage({ savedNotes, onNoteSelect }: AllNotesPageProps) {
+export function AllNotesPage({ savedNotes, onNoteSelect, onDeleteNote }: AllNotesPageProps) {
   const sortedNotes = Object.values(savedNotes).sort((a, b) => b.updatedAt - a.updatedAt);
+
+  const handleDeleteClick = (e: React.MouseEvent, noteId: string) => {
+    e.stopPropagation();
+    if (window.confirm('Are you sure you want to delete this note and all its data?')) {
+      onDeleteNote(noteId)
+        .catch(err => {
+            console.error("Failed to delete note from AllNotesPage:", err);
+            alert("Failed to delete note.");
+        });
+    }
+  };
 
   return (
     <div className="p-6">
@@ -73,6 +85,13 @@ export function AllNotesPage({ savedNotes, onNoteSelect }: AllNotesPageProps) {
                   </div>
                 )}
               </div>
+              <button 
+                onClick={(e) => handleDeleteClick(e, note.noteId)}
+                className="ml-4 p-2 text-gray-400 hover:text-red-600 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-opacity-50 rounded-full transition-colors"
+                title="Delete Note"
+              >
+                <Trash2 className="w-5 h-5" />
+              </button>
             </div>
           </div>
         ))}

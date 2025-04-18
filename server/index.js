@@ -6,14 +6,28 @@ import { promises as fs } from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import dotenv from 'dotenv';
+import noteRoutes from './routes/noteRoutes.js';
+import { PrismaClient } from '@prisma/client';
 
 dotenv.config();
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+// Parse command line arguments for port
+let cmdPort;
+process.argv.forEach((arg, index) => {
+  if (arg === '--port' && process.argv[index + 1]) {
+    cmdPort = parseInt(process.argv[index + 1], 10);
+  }
+});
+
 const app = express();
-const port = process.env.PORT || 3000;
+const port = cmdPort || process.env.PORT || 3000;
+
+console.log(`🔧 Starting server on port ${port}`);
+
+const prisma = new PrismaClient();
 
 app.use(cors({
   origin: ['http://localhost:5173', 'http://127.0.0.1:5173', 'http://localhost:5174', 'http://127.0.0.1:5174'],
@@ -575,16 +589,37 @@ app.get('/api/flashcards/progress', async (req, res) => {
   res.status(200).json(noteProgressList);
 });
 
+// Add the new routes
+app.use('/api', noteRoutes);
+
+// Update startServer function to initialize Prisma
 async function startServer() {
   try {
     await ensureAudioFolder();
+    
+    // Connect to the database
+    await prisma.$connect();
+    console.log('✅ Connected to the database');
+    
     app.listen(port, () => {
       console.log(`🚀 Server running at http://localhost:${port}`);
     });
   } catch (error) {
     console.error('Failed to start server:', error);
+    await prisma.$disconnect();
     process.exit(1);
   }
 }
+
+// Handle graceful shutdown
+process.on('SIGINT', async () => {
+  await prisma.$disconnect();
+  process.exit(0);
+});
+
+process.on('SIGTERM', async () => {
+  await prisma.$disconnect();
+  process.exit(0);
+});
 
 startServer();

@@ -1,8 +1,9 @@
 import { openDB, IDBPDatabase } from 'idb';
 
 const DB_NAME = 'FileContentDB';
-const STORE_NAME = 'fileContents';
-const DB_VERSION = 1;
+const FILE_STORE_NAME = 'fileContents';
+const TEXT_STORE_NAME = 'extractedText';
+const DB_VERSION = 2; // Incremented version to ensure upgrade runs
 
 interface FileContentEntry {
   key: string; // Composite key: `${noteId}_${fileName}`
@@ -11,65 +12,85 @@ interface FileContentEntry {
   fileUrl: string; // Store base64 data URL
 }
 
+interface ExtractedTextEntry {
+  key: string; // Composite key: `text_${noteId}_${fileName}`
+  noteId: string;
+  fileName: string;
+  extractedText: string;
+}
+
 let dbPromise: Promise<IDBPDatabase> | null = null;
 
 function getDb(): Promise<IDBPDatabase> {
   if (!dbPromise) {
+    console.log('[FileStorage] Initializing IndexedDB connection...');
     dbPromise = openDB(DB_NAME, DB_VERSION, {
-      upgrade(db) {
-        if (!db.objectStoreNames.contains(STORE_NAME)) {
-          const store = db.createObjectStore(STORE_NAME, { keyPath: 'key' });
-          // Add an index on noteId to easily delete all files for a note
-          store.createIndex('by_noteId', 'noteId');
-          console.log('[FileStorage] IndexedDB store created:', STORE_NAME);
+      upgrade(db, oldVersion, newVersion, transaction) {
+        console.log(`[FileStorage] Upgrading DB from version ${oldVersion} to ${newVersion}`);
+        // Create fileContents store if it doesn't exist
+        if (!db.objectStoreNames.contains(FILE_STORE_NAME)) {
+          const fileStore = db.createObjectStore(FILE_STORE_NAME, { keyPath: 'key' });
+          fileStore.createIndex('by_noteId', 'noteId');
+          console.log('[FileStorage] IndexedDB store created:', FILE_STORE_NAME);
+        }
+        // Create extractedText store if it doesn't exist
+        if (!db.objectStoreNames.contains(TEXT_STORE_NAME)) {
+          const textStore = db.createObjectStore(TEXT_STORE_NAME, { keyPath: 'key' });
+          textStore.createIndex('by_noteId', 'noteId');
+          console.log('[FileStorage] IndexedDB store created:', TEXT_STORE_NAME);
         }
       },
+      blocked() {
+        console.error('[FileStorage] IndexedDB upgrade blocked. Please close other tabs accessing this database.');
+        alert('Database upgrade needed. Please close other tabs/windows running this application and reload.');
+      },
+      blocking() {
+        console.warn('[FileStorage] IndexedDB connection is blocking an upgrade. Closing connection.');
+        dbPromise?.then(db => db.close()); // Attempt to close the blocking connection
+        dbPromise = null; // Reset promise to allow re-initialization
+      },
+      terminated() {
+         console.warn('[FileStorage] IndexedDB connection terminated unexpectedly.');
+         dbPromise = null; // Reset promise if terminated
+      }
     });
-    dbPromise.then(() => console.log('[FileStorage] IndexedDB connection opened.'))
-             .catch(err => console.error('[FileStorage] Failed to open IndexedDB:', err));
+    dbPromise.then(() => console.log('[FileStorage] IndexedDB connection opened successfully.'))
+             .catch(err => {
+                 console.error('[FileStorage] Failed to open IndexedDB:', err);
+                 dbPromise = null; // Reset promise on failure
+             });
   }
   return dbPromise;
 }
 
-// Function to create the composite key
-function createKey(noteId: string, fileName: string): string {
-  // Basic normalization to avoid issues with keys, replace potential separators
+// --- File Content Functions ---
+
+function createFileKey(noteId: string, fileName: string): string {
   const safeNoteId = noteId.replace(/_/g, '-');
   const safeFileName = fileName.replace(/_/g, '-');
   return `${safeNoteId}_${safeFileName}`;
 }
 
-/**
- * Saves file content (base64 data URL) to IndexedDB.
- * Replaces existing entry if key is the same.
- */
 export async function addFileContent(noteId: string, fileName: string, fileUrl: string): Promise<void> {
   try {
     const db = await getDb();
-    const key = createKey(noteId, fileName);
+    const key = createFileKey(noteId, fileName);
     const entry: FileContentEntry = { key, noteId, fileName, fileUrl };
-    
-    console.log(`[FileStorage] Adding/Updating file content for key: ${key} (Note: ${noteId}, File: ${fileName})`);
-    await db.put(STORE_NAME, entry);
+    console.log(`[FileStorage] Adding/Updating file content for key: ${key}`);
+    await db.put(FILE_STORE_NAME, entry);
     console.log(`[FileStorage] Successfully stored file content for key: ${key}`);
   } catch (error) {
-    console.error(`[FileStorage] Error saving file content for key ${createKey(noteId, fileName)}:`, error);
-    throw error; // Re-throw error to indicate failure
+    console.error(`[FileStorage] Error saving file content for key ${createFileKey(noteId, fileName)}:`, error);
+    throw error;
   }
 }
 
-/**
- * Retrieves file content (base64 data URL) from IndexedDB.
- * Returns null if not found.
- */
 export async function getFileContent(noteId: string, fileName: string): Promise<string | null> {
   try {
     const db = await getDb();
-    const key = createKey(noteId, fileName);
-    
-    console.log(`[FileStorage] Getting file content for key: ${key} (Note: ${noteId}, File: ${fileName})`);
-    const entry = await db.get(STORE_NAME, key);
-    
+    const key = createFileKey(noteId, fileName);
+    console.log(`[FileStorage] Getting file content for key: ${key}`);
+    const entry = await db.get(FILE_STORE_NAME, key);
     if (entry) {
       console.log(`[FileStorage] Successfully retrieved file content for key: ${key}`);
       return entry.fileUrl;
@@ -78,134 +99,63 @@ export async function getFileContent(noteId: string, fileName: string): Promise<
       return null;
     }
   } catch (error) {
-    console.error(`[FileStorage] Error getting file content for key ${createKey(noteId, fileName)}:`, error);
-    return null; // Return null on error
+    console.error(`[FileStorage] Error getting file content for key ${createFileKey(noteId, fileName)}:`, error);
+    return null;
   }
 }
 
-/**
- * Deletes all file content associated with a specific noteId from IndexedDB.
- */
 export async function deleteNoteFiles(noteId: string): Promise<void> {
   try {
     const db = await getDb();
-    const tx = db.transaction(STORE_NAME, 'readwrite');
+    const tx = db.transaction(FILE_STORE_NAME, 'readwrite');
     const index = tx.store.index('by_noteId');
     let cursor = await index.openCursor(IDBKeyRange.only(noteId));
     let deletedCount = 0;
-
-    console.log(`[FileStorage] Deleting files for noteId: ${noteId}`);
+    console.log(`[FileStorage] Deleting file contents for noteId: ${noteId}`);
     while (cursor) {
-      console.log(`[FileStorage] Deleting file content with key: ${cursor.primaryKey}`);
       await cursor.delete();
       deletedCount++;
       cursor = await cursor.continue();
     }
     await tx.done;
-    console.log(`[FileStorage] Successfully deleted ${deletedCount} file(s) for noteId: ${noteId}`);
+    console.log(`[FileStorage] Successfully deleted ${deletedCount} file content entry(s) for noteId: ${noteId}`);
   } catch (error) {
-    console.error(`[FileStorage] Error deleting files for noteId ${noteId}:`, error);
-    // Decide if failure here should be critical or just logged
+    console.error(`[FileStorage] Error deleting file contents for noteId ${noteId}:`, error);
   }
 }
 
-// Optional: Function to delete a single file entry (might be useful later)
-export async function deleteSingleFile(noteId: string, fileName: string): Promise<void> {
-   try {
-    const db = await getDb();
-    const key = createKey(noteId, fileName);
-    console.log(`[FileStorage] Deleting single file content for key: ${key}`);
-    await db.delete(STORE_NAME, key);
-    console.log(`[FileStorage] Successfully deleted single file content for key: ${key}`);
-  } catch (error) {
-    console.error(`[FileStorage] Error deleting single file content for key ${createKey(noteId, fileName)}:`, error);
-  }
-}
+// --- Extracted Text Functions ---
 
-// Initialize DB connection on load
-getDb();
-
-// --- Extracted Text Storage ---
-
-const TEXT_STORE_NAME = 'extractedText';
-const TEXT_DB_VERSION = 1; // Can be same or different from file store version
-
-interface ExtractedTextEntry {
-  key: string; // Composite key: `text_${noteId}_${fileName}`
-  noteId: string;
-  fileName: string;
-  extractedText: string;
-}
-
-let textDbPromise: Promise<IDBPDatabase> | null = null;
-
-// Separate DB or Store? Let's use the same DB but a different Store for simplicity now
-function getTextDb(): Promise<IDBPDatabase> {
-  if (!textDbPromise) {
-    // Re-use the main DB promise logic but potentially upgrade for the new store
-    textDbPromise = openDB(DB_NAME, Math.max(DB_VERSION, TEXT_DB_VERSION), { // Use highest version
-      upgrade(db, oldVersion, newVersion, transaction) {
-        // Upgrade for fileContents if needed (from original logic)
-        if (!db.objectStoreNames.contains(STORE_NAME)) {
-          const fileStore = db.createObjectStore(STORE_NAME, { keyPath: 'key' });
-          fileStore.createIndex('by_noteId', 'noteId');
-          console.log('[FileStorage] IndexedDB store created:', STORE_NAME);
-        }
-        // Upgrade for extractedText store
-        if (!db.objectStoreNames.contains(TEXT_STORE_NAME)) {
-          const textStore = db.createObjectStore(TEXT_STORE_NAME, { keyPath: 'key' });
-          // Add index on noteId to easily delete text for a note
-          textStore.createIndex('by_noteId', 'noteId'); 
-          console.log('[FileStorage] IndexedDB store created:', TEXT_STORE_NAME);
-        }
-      },
-    });
-    textDbPromise.then(() => console.log('[FileStorage] IndexedDB connection opened for text store.'))
-                 .catch(err => console.error('[FileStorage] Failed to open IndexedDB for text store:', err));
-  }
-  return textDbPromise;
-}
-
-// Function to create the key for the text store
 function createTextKey(noteId: string, fileName: string): string {
   const safeNoteId = noteId.replace(/_/g, '-');
   const safeFileName = fileName.replace(/_/g, '-');
   return `text_${safeNoteId}_${safeFileName}`;
 }
 
-/**
- * Saves extracted plain text content to IndexedDB.
- */
 export async function saveExtractedText(noteId: string, fileName: string, extractedText: string): Promise<string> {
   const key = createTextKey(noteId, fileName);
   try {
-    const db = await getTextDb(); // Use the potentially upgraded DB
+    const db = await getDb(); // Use the single getDb function
     const entry: ExtractedTextEntry = { key, noteId, fileName, extractedText };
-    
-    console.log(`[FileStorage] Saving extracted text for key: ${key} (Note: ${noteId}, File: ${fileName})`);
+    console.log(`[FileStorage] Saving extracted text for key: ${key}`);
     await db.put(TEXT_STORE_NAME, entry);
     console.log(`[FileStorage] Successfully stored extracted text for key: ${key}`);
-    return key; // Return the key used
+    return key;
   } catch (error) {
     console.error(`[FileStorage] Error saving extracted text for key ${key}:`, error);
     throw error;
   }
 }
 
-/**
- * Retrieves extracted plain text content from IndexedDB.
- * Returns null if not found or on error.
- */
 export async function getExtractedText(key: string): Promise<string | null> {
   if (!key || !key.startsWith('text_')) {
     console.warn('[FileStorage] Invalid key provided to getExtractedText:', key);
     return null;
   }
   try {
-    const db = await getTextDb();
+    const db = await getDb();
     console.log(`[FileStorage] Getting extracted text for key: ${key}`);
     const entry = await db.get(TEXT_STORE_NAME, key);
-    
     if (entry) {
       console.log(`[FileStorage] Successfully retrieved extracted text for key: ${key}`);
       return entry.extractedText;
@@ -219,30 +169,42 @@ export async function getExtractedText(key: string): Promise<string | null> {
   }
 }
 
-/**
- * Deletes all extracted text associated with a specific noteId from IndexedDB.
- */
 export async function deleteNoteExtractedTexts(noteId: string): Promise<void> {
   try {
-    const db = await getTextDb();
+    const db = await getDb();
     const tx = db.transaction(TEXT_STORE_NAME, 'readwrite');
     const index = tx.store.index('by_noteId');
     let cursor = await index.openCursor(IDBKeyRange.only(noteId));
     let deletedCount = 0;
-
     console.log(`[FileStorage] Deleting extracted texts for noteId: ${noteId}`);
     while (cursor) {
-      console.log(`[FileStorage] Deleting extracted text with key: ${cursor.primaryKey}`);
       await cursor.delete();
       deletedCount++;
       cursor = await cursor.continue();
     }
     await tx.done;
-    console.log(`[FileStorage] Successfully deleted ${deletedCount} extracted text(s) for noteId: ${noteId}`);
+    console.log(`[FileStorage] Successfully deleted ${deletedCount} extracted text entry(s) for noteId: ${noteId}`);
   } catch (error) {
     console.error(`[FileStorage] Error deleting extracted texts for noteId ${noteId}:`, error);
   }
 }
 
-// Make sure text DB connection is also initialized
-getTextDb(); 
+// --- Combined Deletion Function ---
+
+// Optional: Function to delete both file content and extracted text for a note
+export async function deleteAllNoteData(noteId: string): Promise<void> {
+  console.log(`[FileStorage] Deleting all data for noteId: ${noteId}`);
+  try {
+    // It's generally safer to run separate transactions unless atomicity is critical
+    // and the operations are simple. Here, separate is fine.
+    await deleteNoteFiles(noteId);
+    await deleteNoteExtractedTexts(noteId);
+    console.log(`[FileStorage] Finished deleting all data for noteId: ${noteId}`);
+  } catch (error) {
+    console.error(`[FileStorage] Error during combined deletion for noteId ${noteId}:`, error);
+    // Consider how to handle partial failures if necessary
+  }
+}
+
+// Initialize DB connection on load
+getDb(); 

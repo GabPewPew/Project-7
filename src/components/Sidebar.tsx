@@ -5,11 +5,13 @@ import { SavedNote, FileStatus } from '../types';
 interface SidebarProps {
   savedNotes: Record<string, SavedNote>;
   currentNoteId: string | null;
-  currentView: 'home' | 'note' | 'all-notes';
+  currentView: 'home' | 'note' | 'all-notes' | 'flashcard-review' | 'browse-cards';
   onNoteSelect: (noteId: string) => void;
   onDeleteNote: (noteId: string) => void;
   onHomeClick: () => void;
   onAllNotesClick: () => void;
+  onBrowseCardsClick?: () => void;
+  onReviewFlashcardsClick?: () => void;
   isOpen: boolean;
   fileStatuses: FileStatus[];
 }
@@ -22,6 +24,8 @@ export function Sidebar({
   onDeleteNote,
   onHomeClick,
   onAllNotesClick,
+  onBrowseCardsClick,
+  onReviewFlashcardsClick,
   fileStatuses
 }: SidebarProps) {
   const handleDeleteClick = (e: React.MouseEvent, noteId: string) => {
@@ -58,6 +62,36 @@ export function Sidebar({
         <Library className="w-5 h-5 mr-2" />
         All Notes
       </button>
+
+      {onReviewFlashcardsClick && (
+        <button
+          onClick={onReviewFlashcardsClick}
+          className={`w-full flex items-center px-3 py-2 text-sm font-medium rounded-lg mt-2
+            transition-colors duration-150 ${
+              currentView === 'flashcard-review'
+                ? 'bg-blue-50 text-blue-700'
+                : 'text-gray-700 hover:bg-gray-200'
+            }`}
+        >
+          <FileText className="w-5 h-5 mr-2" />
+          Review Flashcards
+        </button>
+      )}
+
+      {onBrowseCardsClick && (
+        <button
+          onClick={onBrowseCardsClick}
+          className={`w-full flex items-center px-3 py-2 text-sm font-medium rounded-lg mt-2
+            transition-colors duration-150 ${
+              currentView === 'browse-cards'
+                ? 'bg-blue-50 text-blue-700'
+                : 'text-gray-700 hover:bg-gray-200'
+            }`}
+        >
+          <Library className="w-5 h-5 mr-2" />
+          Browse Cards
+        </button>
+      )}
 
       {fileStatuses.length > 0 && (
         <div className="mt-6">

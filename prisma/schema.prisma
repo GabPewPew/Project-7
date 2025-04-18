@@ -1,0 +1,69 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:./flashcards.db"
+}
+
+model NoteType {
+  id            String  @id @default(uuid())
+  name          String  @unique
+  fields        String  // JSON array of field names
+  cardTemplates String  // JSON array of {name, frontTemplate, backTemplate}
+  styling       String? // Optional CSS styling
+  notes         Note[]
+  
+  @@map("note_types")
+}
+
+model Note {
+  id           String @id @default(uuid())
+  noteTypeId   String
+  noteType     NoteType @relation(fields: [noteTypeId], references: [id])
+  fieldValues  String  // JSON object mapping field names to values
+  tags         String? // JSON array of tags
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  cards        Card[]
+  
+  @@map("notes")
+}
+
+model Card {
+  id                     String @id @default(uuid())
+  noteId                 String
+  note                   Note @relation(fields: [noteId], references: [id], onDelete: Cascade)
+  noteTypeCardTemplateName String
+  frontContent           String // Rendered HTML
+  backContent            String // Rendered HTML
+  sourceDocumentId       String?
+  sourcePageNumber       Int?
+  createdAt              DateTime @default(now())
+  progress               CardProgress?
+  
+  @@map("cards")
+}
+
+model CardProgress {
+  id              String @id @default(uuid())
+  cardId          String @unique
+  card            Card @relation(fields: [cardId], references: [id], onDelete: Cascade)
+  userId          String @default("default_user") // Prepare for multi-user later
+  repetitions     Int @default(0)
+  easeFactor      Int @default(2500) // stored as permille (2.5 = 2500)
+  interval        Int @default(0) // in days
+  dueDate         DateTime @default(now())
+  state           String @default("new") // 'new', 'learning', 'review', 'relearning'
+  learningStep    Int @default(0)
+  lastReviewDate  DateTime?
+  
+  @@index([userId])
+  @@index([dueDate])
+  @@index([state])
+  @@map("card_progress")
+} 

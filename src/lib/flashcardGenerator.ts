@@ -20,7 +20,7 @@ export async function generateFlashcards(
       console.log('Raw text length:', options.rawText.length);
     }
 
-    const response = await axios.post('http://localhost:3000/api/generate-flashcards', {
+    const response = await axios.post('http://localhost:3001/api/generate-flashcards', {
       noteContent: options.noteContent,
       rawText: options.rawText
     });
