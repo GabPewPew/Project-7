@@ -78,6 +78,9 @@ export interface AudioData {
 export interface Flashcard {
   front: string;
   back: string;
+  pageNumber?: number;
+  pageImage?: string; // base64 or path
+  sourceText?: string; // Original text from the source material
 }
 
 export interface SavedNote {

@@ -25,15 +25,16 @@ export async function generateFlashcards(
       rawText: options.rawText
     });
 
-    // Log the raw response for debugging
-    console.log('🧠 Gemini RAW response preview:', {
-      preview: response.data.raw?.substring(0, 500),
-      length: response.data.raw?.length
-    });
-
-    // Temporary: Return empty array while debugging
-    console.log('⚠️ Debug mode: Returning empty flashcard array');
-    return [];
+    // Log information about the received flashcards
+    console.log(`🧠 Received ${response.data.count} flashcards from server`);
+    
+    if (!response.data.flashcards || !Array.isArray(response.data.flashcards)) {
+      console.error('❌ Invalid flashcards response:', response.data);
+      return [];
+    }
+    
+    // Return the parsed flashcards from the server
+    return response.data.flashcards;
 
   } catch (error) {
     console.error('❌ Failed to generate flashcards:', error);
