@@ -21,6 +21,7 @@ import { NoteRenderer } from './components/NoteRenderer';
 import { LearningIntent, ExamPrepStyle, ResearchStyle, ProcessingResult, SavedNote, NoteBlock, Flashcard } from './types';
 import { FlashcardPreview } from './components/FlashcardPreview';
 import { extractMultiplePageImages, extractPageImage, createBasicPdf } from './lib/pdfUtils';
+import { getFileContent, getExtractedText } from './lib/fileStorage';
 
 const DEMO_USER_ID = 'demo_user';
 
@@ -46,8 +47,8 @@ function App() {
   }>>([]);
   const [showTitlePrompt, setShowTitlePrompt] = useState(false);
   const [pendingNote, setPendingNote] = useState<{
-    content: string;
-    files: File[];
+    generatedContent: string;
+    sourceFiles: { file: File; extractedText: string }[];
     tags: { primary: string; secondary?: string };
   } | null>(null);
   const [savedNotes, setSavedNotes] = useState<Record<string, SavedNote>>({});
@@ -203,9 +204,26 @@ function App() {
         throw new Error('Duplicate content detected');
       }
 
+      // Find the original File object from the main files state
+      const originalFile = files.find(f => f.name === result.fileName);
+      if (!originalFile) {
+        console.error(`Could not find original file for ${result.fileName} in state`);
+        throw new Error('Original file not found'); 
+      }
+
+      // Ensure we have the extracted text from the result
+      const extractedText = typeof result.content === 'string' ? result.content : '';
+      if (!extractedText) {
+        console.warn(`[generateNoteForFile] Extracted text for ${result.fileName} is empty. Cannot save for rawText context.`);
+        // Potentially throw error or handle differently? For now, proceed without it.
+      }
+
+      console.log(`[generateNoteForFile] Found original file: ${originalFile.name}, Type: ${originalFile.type}`);
+      console.log(`[generateNoteForFile] Extracted text length: ${extractedText.length}`);
+
       setPendingNote({
-        content: geminiResponse.notes,
-        files: [new File([result.content], result.fileName)],
+        generatedContent: geminiResponse.notes,
+        sourceFiles: [{ file: originalFile, extractedText }],
         tags: { primary: result.type }
       });
       setShowTitlePrompt(true);
@@ -335,10 +353,11 @@ function App() {
     if (!pendingNote) return;
 
     try {
+      // Pass sourceFiles instead of originalFiles
       const { noteId } = await noteSaver.saveNote(
         title,
-        pendingNote.content,
-        pendingNote.files,
+        pendingNote.generatedContent,
+        pendingNote.sourceFiles,
         pendingNote.tags
       );
 
@@ -346,7 +365,7 @@ function App() {
       setSavedNotes(notes);
       setCurrentNoteId(noteId);
       setCurrentView('note');
-      setEditorValue(pendingNote.content);
+      setEditorValue(pendingNote.generatedContent);
       setShowTitlePrompt(false);
       setPendingNote(null);
       setHasUnsavedChanges(false);
@@ -531,302 +550,183 @@ function App() {
     try {
       const note = savedNotes[noteId];
       if (!note) {
-        console.error(`Note not found with ID: ${noteId}`);
+        console.error(`[Flashcards] Note not found with ID: ${noteId}`);
         return;
       }
 
-      console.log(`Processing flashcards for note: "${note.title}"`);
-      console.log(`Total flashcards: ${flashcards.length}`);
+      console.log(`[Flashcards] Processing ${flashcards.length} flashcards for note: \"${note.title}\". Silent: ${silent}`);
 
-      // If we have flashcards with page numbers, try to add page images
-      const flashcardsWithPageNumbers = flashcards.filter(card => card.pageNumber);
-      
-      console.log(`Found ${flashcardsWithPageNumbers.length} flashcards with page numbers`);
-      
+      const flashcardsWithPageNumbers = flashcards.filter(card => card.pageNumber && card.pageNumber > 0);
+      console.log(`[Flashcards] Found ${flashcardsWithPageNumbers.length} flashcards with valid page numbers.`);
+
       if (flashcardsWithPageNumbers.length > 0) {
+        let pdfFile: File | null = null;
+        let pdfSourceStatus: 'retrieved' | 'invalid_retrieval' | 'error_retrieval' | 'none' | 'error_extraction' = 'none';
+
+        // --- Step 1: Try to retrieve the actual PDF File --- 
         try {
-          // Get PDF file info from note
-          console.log(`Attempting to get PDF file for note: "${note.title}"`);
-          const pdfFile = await getPdfFileFromNote(note);
-          
+          console.log(`[Flashcards] Attempting to get PDF file for note: \"${note.title}\".`);
+          pdfFile = await getPdfFileFromNote(note); 
+
           if (pdfFile && pdfFile.size > 0 && pdfFile.type === 'application/pdf') {
-            console.log(`Successfully retrieved PDF file: ${pdfFile.name}, Size: ${pdfFile.size} bytes, Type: ${pdfFile.type}`);
-            
-            // Test if the PDF is valid by trying to read the first few bytes
-            try {
-              const reader = new FileReader();
-              const headerPromise = new Promise<boolean>((resolve) => {
-                reader.onload = () => {
-                  const result = reader.result;
-                  if (result && typeof result === 'string' && result.startsWith('%PDF-')) {
-                    console.log('PDF header verification successful');
-                    resolve(true);
-                  } else if (result && result instanceof ArrayBuffer) {
-                    const bytes = new Uint8Array(result);
-                    const header = String.fromCharCode(...bytes.slice(0, 5));
-                    const isValid = header === '%PDF-';
-                    console.log(`PDF header verification: ${isValid ? 'valid' : 'invalid'} (${header})`);
-                    resolve(isValid);
-                  } else {
-                    console.error('PDF header verification failed - invalid result type');
-                    resolve(false);
-                  }
-                };
-                reader.onerror = () => {
-                  console.error('PDF header verification failed - read error');
-                  resolve(false);
-                };
-              });
-              
-              // Read just the first few bytes to check header
-              reader.readAsText(pdfFile.slice(0, 8));
-              
-              const isValidPdf = await headerPromise;
-              if (!isValidPdf) {
-                throw new Error('Invalid PDF file - missing PDF header');
-              }
-            } catch (headerError) {
-              console.error('PDF validation failed:', headerError);
-              throw new Error('PDF validation failed');
-            }
-            
-            // Use batch processing for better performance
-            console.log(`Using batch processing to extract ${flashcardsWithPageNumbers.length} page images`);
-            
-            // Get all the page numbers we need to extract
+             console.log(`[Flashcards] Successfully retrieved PDF file: ${pdfFile.name}, Size: ${pdfFile.size} bytes, Type: ${pdfFile.type}`);
+             pdfSourceStatus = 'retrieved';
+
+             // Basic header check (optional but recommended)
+             try {
+                const reader = new FileReader();
+                const headerPromise = new Promise<boolean>((resolve) => {
+                  reader.onload = (e) => {
+                    const result = e.target?.result;
+                    if (result && typeof result === 'string' && result.startsWith('%PDF-')) resolve(true);
+                    else if (result instanceof ArrayBuffer) {
+                      const bytes = new Uint8Array(result);
+                      const header = String.fromCharCode(...bytes.slice(0, 5));
+                      resolve(header === '%PDF-');
+                    } else resolve(false);
+                  };
+                  reader.onerror = () => resolve(false);
+                });
+                reader.readAsArrayBuffer(pdfFile.slice(0, 8)); // Read only first 8 bytes
+                const isValid = await headerPromise;
+                if (!isValid) {
+                  console.warn(`[Flashcards] Retrieved PDF file (${pdfFile.name}) header check failed.`);
+                  pdfSourceStatus = 'invalid_retrieval'; // Treat as invalid if header fails
+                  pdfFile = null; 
+                } else {
+                  console.log(`[Flashcards] PDF header verification successful for ${pdfFile.name}.`);
+                }
+             } catch (headerError) {
+                console.warn(`[Flashcards] Error during PDF header check:`, headerError);
+                pdfSourceStatus = 'invalid_retrieval'; // Treat as invalid on error
+                pdfFile = null; 
+             }
+
+          } else {
+             console.warn(`[Flashcards] getPdfFileFromNote did not return a valid PDF File object. Name: ${pdfFile?.name}, Size: ${pdfFile?.size}, Type: ${pdfFile?.type}`);
+             pdfSourceStatus = 'invalid_retrieval';
+             pdfFile = null; // Ensure pdfFile is null if invalid
+          }
+        } catch (getPdfError) {
+           console.error(`[Flashcards] Error calling getPdfFileFromNote:`, getPdfError);
+           pdfSourceStatus = 'error_retrieval';
+           pdfFile = null; // Ensure pdfFile is null on error
+        }
+
+        // --- Step 2: Image Extraction or Placeholder Generation --- 
+        if (pdfFile && pdfSourceStatus === 'retrieved') {
+          // --- Attempt to extract images from the successfully retrieved PDF --- 
+          console.log(`[Flashcards] Attempting image extraction from retrieved PDF: ${pdfFile.name}`);
+          try {
             const pageNumbers = flashcardsWithPageNumbers
-              .map(card => card.pageNumber)
-              .filter((page): page is number => page !== undefined);
+              .map(card => card.pageNumber!)
+              .filter((page, index, self) => self.indexOf(page) === index); // Unique page numbers
               
-            // Create a map of page numbers to cards for easier updating later
+            console.log(`[Flashcards] Need images for unique pages: ${pageNumbers.join(', ')}`);
+
             const pageToCardMap = new Map<number, Flashcard[]>();
             flashcardsWithPageNumbers.forEach(card => {
               if (card.pageNumber) {
-                if (!pageToCardMap.has(card.pageNumber)) {
-                  pageToCardMap.set(card.pageNumber, []);
-                }
-                pageToCardMap.get(card.pageNumber)?.push(card);
+                 if (!pageToCardMap.has(card.pageNumber)) pageToCardMap.set(card.pageNumber, []);
+                 pageToCardMap.get(card.pageNumber)?.push(card);
               }
             });
-            
-            try {
-              // Extract all page images at once using our improved batch function
-              console.log(`Extracting ${pageNumbers.length} page images from PDF...`);
-              const pageImages = await extractMultiplePageImages(pdfFile, pageNumbers, 1.0);
-              
-              // Apply images to all cards based on their page number
-              let successCount = 0;
-              pageToCardMap.forEach((cards, pageNum) => {
-                const image = pageImages.get(pageNum);
-                if (image && image.length > 100 && 
-                    (image.startsWith('data:image/jpeg') || image.startsWith('data:image/png'))) {
-                  cards.forEach(card => {
-                    card.pageImage = image;
-                  });
-                  successCount += cards.length;
-                  console.log(`Applied image for page ${pageNum} to ${cards.length} flashcard(s)`);
-                } else {
-                  console.error(`No valid image found for page ${pageNum}`);
-                }
-              });
-              
-              console.log(`Successfully applied images to ${successCount} of ${flashcardsWithPageNumbers.length} flashcards`);
-              
-              // If we didn't get many successful images, try individual extraction as a fallback
-              if (successCount < flashcardsWithPageNumbers.length / 2) {
-                console.log(`Low success rate with batch extraction, trying individual processing for missing images...`);
-                
-                // Process remaining cards without images
-                for (const card of flashcardsWithPageNumbers) {
-                  if (card.pageNumber && !card.pageImage) {
-                    try {
-                      console.log(`Attempting individual extraction for page ${card.pageNumber}...`);
-                      const pageImage = await extractPageImage(pdfFile, card.pageNumber, 1.0);
-                      
-                      if (pageImage && pageImage.length > 100 && 
-                          (pageImage.startsWith('data:image/jpeg') || pageImage.startsWith('data:image/png'))) {
-                        card.pageImage = pageImage;
-                        console.log(`Successfully added image for page ${card.pageNumber}`);
-                        successCount++;
-                      }
-                    } catch (err) {
-                      console.error(`Failed individual image extraction for page ${card.pageNumber}:`, err);
-                    }
-                    
-                    // Add a small delay to avoid browser throttling
-                    await new Promise(resolve => setTimeout(resolve, 30));
-                  }
-                }
+
+            // Use batch extraction for efficiency
+            const pageImages = await extractMultiplePageImages(pdfFile, pageNumbers, 1.0); 
+
+            let appliedSuccessCount = 0;
+            let extractionFailures = 0;
+            pageToCardMap.forEach((cards, pageNum) => {
+              const image = pageImages.get(pageNum);
+              // Check if image is valid (not the fallback and reasonable length)
+              if (image && image !== 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=' && image.length > 100 && (image.startsWith('data:image/jpeg') || image.startsWith('data:image/png'))) {
+                cards.forEach(card => card.pageImage = image);
+                appliedSuccessCount += cards.length;
+              } else {
+                 console.warn(`[Flashcards] Failed to get valid image for page ${pageNum}. Will use placeholder.`);
+                 cards.forEach(card => card.pageImage = undefined); // Set to undefined so placeholder logic runs
+                 extractionFailures++;
               }
-            } catch (batchError) {
-              console.error('Batch image extraction failed:', batchError);
-              console.log('Falling back to individual page extraction...');
-              
-              // Process each card sequentially as a fallback
-              let successCount = 0;
-              
-              for (let i = 0; i < flashcardsWithPageNumbers.length; i++) {
-                const card = flashcardsWithPageNumbers[i];
-                if (!card.pageNumber) continue;
-                
-                console.log(`Processing image for flashcard ${i+1}/${flashcardsWithPageNumbers.length} (page ${card.pageNumber})...`);
-                
-                try {
-                  // Extract single page image
-                  const pageImage = await extractPageImage(pdfFile, card.pageNumber, 1.0);
-                  
-                  // Verify image was generated successfully
-                  if (pageImage && pageImage.length > 100 && 
-                      (pageImage.startsWith('data:image/jpeg') || pageImage.startsWith('data:image/png'))) {
-                    card.pageImage = pageImage;
-                    console.log(`Successfully added image for page ${card.pageNumber}, image size: ${Math.round(pageImage.length/1024)}KB`);
-                    successCount++;
-                  } else {
-                    console.error(`Image extraction returned invalid data for page ${card.pageNumber}, length: ${pageImage?.length || 0}`);
-                    card.pageImage = undefined; // Clear invalid image data
-                  }
-                } catch (err) {
-                  console.error(`Failed to extract image for page ${card.pageNumber}:`, err);
-                  card.pageImage = undefined; // Make sure to clear any invalid partial data
-                }
-                
-                // Add a small delay between processing to avoid browser throttling
-                if (i < flashcardsWithPageNumbers.length - 1) {
-                  await new Promise(resolve => setTimeout(resolve, 50));
-                }
-              }
-              
-              console.log(`Individual processing complete - ${successCount} of ${flashcardsWithPageNumbers.length} images successfully extracted`);
-            }
-          } else {
-            console.warn(`Could not load valid PDF file from note: "${note.title}"`);
-            
-            // Try to create a real PDF with page numbers
-            console.log('Creating a basic PDF with page numbers for image extraction');
-            
-            try {
-              // Create a basic PDF with enough pages
-              const maxPageNumber = Math.max(...flashcardsWithPageNumbers
-                .filter(card => card.pageNumber)
-                .map(card => card.pageNumber || 0));
-                
-              const basicPdf = createBasicPdf(
-                Math.max(maxPageNumber, 30), // Create more pages than needed
-                note.title
-              );
-              
-              console.log(`Created basic PDF with ${Math.max(maxPageNumber, 30)} pages`);
-              
-              // Extract all page images in a batch from the generated PDF
-              const pageNumbers = flashcardsWithPageNumbers
-                .map(card => card.pageNumber)
-                .filter((page): page is number => page !== undefined);
-                
-              console.log(`Batch extracting ${pageNumbers.length} images from generated PDF...`);
-              const pageImages = await extractMultiplePageImages(basicPdf, pageNumbers, 1.0);
-              
-              // Apply images to cards
-              let successCount = 0;
-              for (const card of flashcardsWithPageNumbers) {
-                if (card.pageNumber) {
-                  const image = pageImages.get(card.pageNumber);
-                  if (image && image.length > 100 && 
-                      (image.startsWith('data:image/jpeg') || image.startsWith('data:image/png'))) {
-                    card.pageImage = image;
-                    console.log(`Successfully added generated PDF image for page ${card.pageNumber}`);
-                    successCount++;
-                  } else {
-                    console.warn(`No valid image for page ${card.pageNumber} from generated PDF`);
-                    // Fall back to test image
-                    const testImage = await createEnhancedPlaceholderImage(card.pageNumber, note.title);
-                    if (testImage && testImage.length > 100) {
-                      card.pageImage = testImage;
-                      console.log(`Falling back to test image for page ${card.pageNumber}`);
-                    }
-                  }
-                }
-              }
-              
-              console.log(`Generated PDF processing complete - ${successCount} images extracted`);
-              
-              // If we didn't get any successful images from the generated PDF, fall back to test images
-              if (successCount === 0) {
-                throw new Error('No images successfully extracted from generated PDF');
-              }
-            } catch (pdfError) {
-              console.error('Error using generated PDF:', pdfError);
-              
-              // Since we couldn't load an actual PDF, create a test/placeholder image
-              console.log(`Creating test images for flashcards instead`);
-              
-              for (let i = 0; i < flashcardsWithPageNumbers.length; i++) {
-                const card = flashcardsWithPageNumbers[i];
-                if (!card.pageNumber) continue;
-                
-                try {
-                  // Create a test image with the page number embedded in it
-                  const testImage = await createEnhancedPlaceholderImage(card.pageNumber, note.title);
-                  if (testImage && testImage.length > 100) {
-                    card.pageImage = testImage;
-                    console.log(`Added test image for flashcard with page ${card.pageNumber}`);
-                  }
-                } catch (err) {
-                  console.error(`Failed to create test image for page ${card.pageNumber}:`, err);
-                }
-                
-                // Add a small delay between operations
-                if (i < flashcardsWithPageNumbers.length - 1) {
-                  await new Promise(resolve => setTimeout(resolve, 20));
-                }
-              }
-            }
+            });
+            console.log(`[Flashcards] Image extraction applied. Success count (cards): ${appliedSuccessCount}. Failed pages: ${extractionFailures}`);
+
+            // Generate placeholders ONLY for cards where extraction failed
+             if (extractionFailures > 0) {
+               console.log(`[Flashcards] Generating placeholders for ${extractionFailures} pages where extraction failed.`);
+               for (const card of flashcardsWithPageNumbers) {
+                 if (card.pageNumber && card.pageImage === undefined) { // Only target cards needing an image
+                   try {
+                     const placeholderImage = await createEnhancedPlaceholderImage(card.pageNumber, note.title);
+                     if (placeholderImage && placeholderImage.length > 100) {
+                       card.pageImage = placeholderImage;
+                       console.log(`[Flashcards] Added enhanced placeholder for page ${card.pageNumber}`);
+                     }
+                   } catch (placeholderError) {
+                     console.error(`[Flashcards] Failed to create placeholder image for page ${card.pageNumber}:`, placeholderError);
+                     // Leave pageImage as undefined
+                   }
+                 }
+               }
+             }
+
+          } catch (extractionError) {
+            console.error(`[Flashcards] Error during batch image extraction from retrieved PDF:`, extractionError);
+            console.log('[Flashcards] Falling back to generating placeholder images for ALL cards due to extraction error.');
+            pdfSourceStatus = 'error_extraction'; // Mark extraction as failed
+            // Fall through to the placeholder generation block below
           }
-        } catch (imageError) {
-          console.error(`Error adding page images to flashcards for note "${note.title}":`, imageError);
-          
-          // If there was an error, still try to add test images
-          console.log(`Creating test images as fallback after error`);
-          
+        }
+        
+        // --- Fallback: Generate Placeholders if PDF retrieval or extraction failed --- 
+        if (pdfSourceStatus !== 'retrieved') {
+          console.warn(`[Flashcards] PDF source status: ${pdfSourceStatus}. Generating placeholders for all ${flashcardsWithPageNumbers.length} cards.`);
           for (const card of flashcardsWithPageNumbers) {
-            if (!card.pageNumber) continue;
-            
-            try {
-              const testImage = await createEnhancedPlaceholderImage(card.pageNumber, note.title);
-              if (testImage && testImage.length > 100) {
-                card.pageImage = testImage;
-                console.log(`Added fallback test image for page ${card.pageNumber}`);
+            if (card.pageNumber) {
+              try {
+                 const placeholderImage = await createEnhancedPlaceholderImage(card.pageNumber, note.title);
+                 if (placeholderImage && placeholderImage.length > 100) {
+                   card.pageImage = placeholderImage;
+                 } else {
+                   console.warn(`[Flashcards] Failed to generate valid placeholder for page ${card.pageNumber}`);
+                   card.pageImage = undefined;
+                 }
+              } catch (placeholderError) {
+                 console.error(`[Flashcards] Failed to create placeholder image for page ${card.pageNumber}:`, placeholderError);
+                 card.pageImage = undefined;
               }
-            } catch (err) {
-              console.error(`Failed to create fallback test image:`, err);
+              // Add a small delay between placeholder generations if needed
+              await new Promise(resolve => setTimeout(resolve, 10)); 
             }
           }
         }
+      } else {
+        console.log('[Flashcards] No flashcards with page numbers found. Skipping image processing.');
       }
 
-      // Remove any invalid pageImage values before saving
+      // --- Step 3: Final Cleanup and Save --- 
       flashcards.forEach(card => {
+        // Remove invalid image data (too short, not base64, or our known fallback)
         if (card.pageImage && (card.pageImage.length < 100 || 
-            (!card.pageImage.startsWith('data:image/jpeg') && 
-             !card.pageImage.startsWith('data:image/png')))) {
-          console.log(`Removing invalid image data for card with page ${card.pageNumber}`);
+            card.pageImage === 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=' ||
+            (!card.pageImage.startsWith('data:image/jpeg') && !card.pageImage.startsWith('data:image/png')))) {
+          console.log(`[Flashcards] Removing invalid/fallback image data before saving for card page ${card.pageNumber}`);
           card.pageImage = undefined;
         }
       });
 
-      // Save the flashcards to the note
-      console.log(`Saving ${flashcards.length} flashcards to note: "${note.title}"`);
+      console.log(`[Flashcards] Saving ${flashcards.length} flashcards to note: \"${note.title}\".`);
       await noteSaver.updateNote(noteId, note.current.content, undefined, undefined, flashcards);
       const notes = noteSaver.loadNotesFromStorage();
       setSavedNotes(notes);
-      
-      // Only show toast if not silent
+
       if (!silent) {
-        toast.success('Flashcards updated');
+        toast.success('Flashcards updated with images');
       }
     } catch (error) {
-      console.error('Failed to update flashcards:', error);
+      console.error('[Flashcards] Unhandled error in handleSaveFlashcards:', error);
       if (!silent) {
-        toast.error('Failed to update flashcards');
+        toast.error('Failed to update flashcards with images');
       }
     }
   };
@@ -834,254 +734,69 @@ function App() {
   // Helper function to get PDF file from note with improved error handling
   const getPdfFileFromNote = async (note: SavedNote): Promise<File | null> => {
     try {
-      console.log(`Attempting to extract PDF file from note "${note.title}"`);
+      console.log(`[getPdfFileFromNote] Attempting to extract PDF file from note "${note.title}" (ID: ${note.id})`);
       
-      // Deeper analysis of note structure
-      console.log('Full note structure for debugging:', {
-        id: note.id,
-        title: note.title,
-        filesCount: note.files.length,
-        fileInfo: note.files.map(f => ({
-          name: f.fileName,
-          keys: Object.keys(f),
-          hasFileUrl: !!f.fileUrl,
-          fileUrlType: f.fileUrl ? typeof f.fileUrl : 'none',
-          fileUrlLength: f.fileUrl ? f.fileUrl.length : 0,
-          fileUrlStart: f.fileUrl ? f.fileUrl.substring(0, 50) + '...' : 'none'
-        })),
-        // Include other note properties that might contain PDF data
-        hasCurrentVersion: !!note.current,
-        currentVersionKeys: note.current ? Object.keys(note.current) : [],
-        hasContent: !!note.current?.content,
-        contentLength: note.current?.content?.length || 0,
-        contentStart: note.current?.content ? note.current.content.substring(0, 50) + '...' : 'none',
-        rootKeys: Object.keys(note)
-      });
-
-      // Check if note.files might be storing content directly (not as objects)
-      if (note.files.length > 0 && typeof note.files[0] === 'string') {
-        console.log(`Note files appear to be stored as strings, not objects`);
-        try {
-          const fileContent = note.files[0] as unknown as string;
-          const file = new File([fileContent], note.title, { type: 'application/pdf' });
-          console.log(`Created file from direct string content: ${file.name}, size: ${file.size} bytes`);
-          return file;
-        } catch (err) {
-          console.error(`Failed to create file from string content:`, err);
-        }
-      }
-
-      // Check if PDF data is embedded in the note content
-      if (note.current?.content && note.title.toLowerCase().endsWith('.pdf')) {
-        console.log(`Checking if PDF data is embedded in note content`);
-        const content = note.current.content;
-        
-        // Look for base64 PDF data in the content
-        const pdfBase64Match = content.match(/data:application\/pdf;base64,([A-Za-z0-9+/=]+)/);
-        if (pdfBase64Match && pdfBase64Match[1]) {
-          console.log(`Found base64 PDF data embedded in note content`);
-          try {
-            const base64Data = pdfBase64Match[1];
-            const binaryData = atob(base64Data);
-            const bytes = new Uint8Array(binaryData.length);
-            
-            for (let i = 0; i < binaryData.length; i++) {
-              bytes[i] = binaryData.charCodeAt(i);
-            }
-            
-            const blob = new Blob([bytes], { type: 'application/pdf' });
-            const file = new File([blob], note.title, { type: 'application/pdf' });
-            
-            console.log(`Created PDF file from embedded base64: ${file.name}, size: ${file.size} bytes`);
-            return file;
-          } catch (err) {
-            console.error(`Failed to extract embedded PDF:`, err);
-          }
-        }
-      }
-
-      // Check if the actual PDF content might be stored in note content
-      if (note.current?.content && note.current.content.startsWith('%PDF-')) {
-        console.log(`Note content appears to be raw PDF data`);
-        try {
-          const blob = new Blob([note.current.content], { type: 'application/pdf' });
-          const file = new File([blob], note.title, { type: 'application/pdf' });
-          console.log(`Created PDF from raw content: ${file.name}, size: ${file.size} bytes`);
-          return file;
-        } catch (err) {
-          console.error(`Failed to create PDF from raw content:`, err);
-        }
-      }
-
-      // Rest of existing code - Check for PDF files
-      const pdfFileData = note.files.find((f: { fileName: string }) => 
+      // Find the PDF file *metadata* in the note object
+      const pdfFileMetadata = note.files.find((f: { fileName: string }) => 
         f.fileName.toLowerCase().endsWith('.pdf')
       );
       
-      if (!pdfFileData) {
-        console.error(`No PDF file found in note files`);
+      if (!pdfFileMetadata) {
+        console.error(`[getPdfFileFromNote] No PDF file metadata found in note files for note ID ${note.id}`);
         return null;
       }
       
-      // Log the exact structure of the PDF file data
-      console.log(`PDF file data structure:`, JSON.stringify(pdfFileData, null, 2));
-      
-      // Even if fileUrl is missing, check if the file data itself might have PDF content
-      if (!pdfFileData.fileUrl) {
-        console.error(`PDF file found but missing fileUrl property`);
-        console.log(`PDF file properties:`, Object.keys(pdfFileData));
-        
-        // Try to extract the PDF data from various possible properties
-        if ((pdfFileData as any).content) {
-          console.log(`Found content property instead of fileUrl`);
-          // Create a blob from the content
-          const blob = new Blob([(pdfFileData as any).content], { type: 'application/pdf' });
-          return new File([blob], pdfFileData.fileName, { type: 'application/pdf' });
-        } else if ((pdfFileData as any).raw) {
-          console.log(`Found raw property instead of fileUrl`);
-          // Create a blob from the raw content
-          const blob = new Blob([(pdfFileData as any).raw], { type: 'application/pdf' });
-          return new File([blob], pdfFileData.fileName, { type: 'application/pdf' });
-        } else if ((pdfFileData as any).data) {
-          console.log(`Found data property instead of fileUrl`);
-          // Create a blob from the data
-          const blob = new Blob([(pdfFileData as any).data], { type: 'application/pdf' });
-          return new File([blob], pdfFileData.fileName, { type: 'application/pdf' });
-        } else {
-          // If we can't find any content property, try to stringify the entire object
-          console.log(`No content property found, trying to use the entire object`);
-          try {
-            const pdfString = JSON.stringify(pdfFileData);
-            // Check if the stringified object contains PDF header
-            if (pdfString.includes('%PDF-')) {
-              console.log(`PDF header found in stringified object`);
-              const blob = new Blob([pdfString], { type: 'application/pdf' });
-              return new File([blob], pdfFileData.fileName, { type: 'application/pdf' });
-            }
-          } catch (err) {
-            console.error(`Failed to stringify PDF file data:`, err);
-          }
-        }
-        
-        // Try to see if the file data itself might be the PDF content (if it's actually a string)
-        if (typeof pdfFileData === 'string') {
-          console.log(`PDF file data is a string, using directly`);
-          const blob = new Blob([pdfFileData], { type: 'application/pdf' });
-          return new File([blob], note.title, { type: 'application/pdf' });
-        }
-        
-        return null;
+      console.log(`[getPdfFileFromNote] Found PDF metadata:`, pdfFileMetadata);
+
+      // Retrieve the actual file content (base64 data URL) from IndexedDB
+      console.log(`[getPdfFileFromNote] Retrieving content for ${pdfFileMetadata.fileName} from IndexedDB...`);
+      const fileUrl = await getFileContent(note.id, pdfFileMetadata.fileName);
+
+      if (!fileUrl) {
+         console.error(`[getPdfFileFromNote] Failed to retrieve file content from IndexedDB for ${pdfFileMetadata.fileName}`);
+         return null;
       }
-      
-      // Continue with existing code...
-      console.log(`Found PDF file in note "${note.title}": ${pdfFileData.fileName}`);
-      console.log(`FileUrl type: ${typeof pdfFileData.fileUrl}, length: ${pdfFileData.fileUrl.length}`);
-      
-      // Try multiple methods to get the PDF data
-      try {
-        // Method 1: If the fileUrl is a data URL (base64-encoded PDF)
-        if (pdfFileData.fileUrl.startsWith('data:application/pdf;base64,')) {
-          console.log(`PDF is stored as a data URL, extracting...`);
+
+      // Check if the retrieved content is a valid data URL for a PDF
+      if (fileUrl.startsWith('data:application/pdf;base64,')) {
+          console.log(`[getPdfFileFromNote] PDF content retrieved from IndexedDB as data URL. Length: ${fileUrl.length}`);
           
           try {
-            // Extract the base64 data
-            const base64Data = pdfFileData.fileUrl.split(',')[1];
+            // Decode the base64 data URL back into a File object
+            const base64Data = fileUrl.split(',')[1];
             if (!base64Data) {
-              throw new Error('Invalid data URL format');
+              throw new Error('Invalid data URL format retrieved from IndexedDB');
             }
             
-            // Convert base64 to binary
             const binaryData = atob(base64Data);
             const bytes = new Uint8Array(binaryData.length);
-            
             for (let i = 0; i < binaryData.length; i++) {
               bytes[i] = binaryData.charCodeAt(i);
             }
             
-            // Create File object from binary data
             const blob = new Blob([bytes], { type: 'application/pdf' });
-            const file = new File([blob], pdfFileData.fileName, { type: 'application/pdf' });
+            // Use metadata for name, but Blob for content
+            const file = new File([blob], pdfFileMetadata.fileName, { type: 'application/pdf' }); 
             
             if (file.size === 0) {
-              throw new Error('Generated PDF file has zero size');
+              throw new Error('Generated PDF file from IndexedDB data has zero size');
             }
             
-            console.log(`Successfully extracted PDF from data URL (${file.size} bytes)`);
+            console.log(`[getPdfFileFromNote] Successfully created File object from IndexedDB data (${file.size} bytes)`);
             return file;
-          } catch (dataUrlError) {
-            console.error('Failed to extract PDF from data URL:', dataUrlError);
-            // Continue to next method
+          } catch (decodingError) {
+            console.error(`[getPdfFileFromNote] Failed to decode base64 data URL from IndexedDB:`, decodingError);
+            return null;
           }
+        } else {
+           console.error(`[getPdfFileFromNote] Content retrieved from IndexedDB for ${pdfFileMetadata.fileName} is not a valid PDF data URL.`);
+           return null;
         }
-        
-        // Method 2: If the fileUrl is a URL or relative path
-        console.log(`Attempting to fetch PDF file from URL...`);
-        
-        try {
-          return await fetchPdfFromUrl(pdfFileData.fileUrl, pdfFileData.fileName);
-        } catch (fetchError) {
-          console.error('Failed to fetch PDF:', fetchError);
-          // Continue to next method
-        }
-        
-        // If fileUrl isn't a data URL or fetchable URL, it might be raw content
-        console.log(`Treating fileUrl as raw content...`);
-        try {
-          const blob = new Blob([pdfFileData.fileUrl], { type: 'application/pdf' });
-          const file = new File([blob], pdfFileData.fileName, { type: 'application/pdf' });
-          console.log(`Created PDF from fileUrl as content: ${file.name}, size: ${file.size} bytes`);
-          return file;
-        } catch (rawError) {
-          console.error('Failed to create PDF from raw content:', rawError);
-        }
-        
-        // If all methods failed, create a minimal placeholder PDF
-        console.warn(`All PDF extraction methods failed, creating placeholder`);
-        const minimalPdfContent = `%PDF-1.4
-1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj
-2 0 obj<</Type/Pages/Kids[3 0 R]/Count 1>>endobj
-3 0 obj<</Type/Page/MediaBox[0 0 612 792]/Parent 2 0 R/Resources<<>>>>endobj
-xref
-0 4
-0000000000 65535 f
-0000000010 00000 n
-0000000053 00000 n
-0000000102 00000 n
-trailer<</Size 4/Root 1 0 R>>
-startxref
-178
-%%EOF`;
-        
-        const dummyBlob = new Blob([minimalPdfContent], { type: 'application/pdf' });
-        return new File([dummyBlob], pdfFileData.fileName, { type: 'application/pdf' });
-      } catch (error) {
-        console.error(`All methods to extract PDF failed:`, error);
-        return null;
-      }
+
     } catch (error) {
-      console.error(`Error in getPdfFileFromNote:`, error);
+      console.error(`[getPdfFileFromNote] Error getting PDF file for note ID ${note?.id}:`, error);
       return null;
     }
-  };
-
-  // Helper function to fetch a PDF from a URL
-  const fetchPdfFromUrl = async (url: string, fileName: string): Promise<File> => {
-    console.log(`Fetching PDF from URL: ${url.substring(0, 50)}...`);
-    const response = await fetch(url);
-    
-    if (!response.ok) {
-      throw new Error(`HTTP error: ${response.status} ${response.statusText}`);
-    }
-    
-    const blob = await response.blob();
-    
-    if (blob.size === 0) {
-      throw new Error('Fetched PDF has zero size');
-    }
-    
-    const file = new File([blob], fileName, { type: 'application/pdf' });
-    console.log(`Successfully fetched PDF (${file.size} bytes)`);
-    return file;
   };
 
   // Update Audio button based on generation status
@@ -1145,11 +860,20 @@ startxref
               const note = savedNotes[currentNoteId];
               if (!note) return;
 
-              const rawContent = note.files[0]?.fileUrl || '';
+              // Retrieve the extracted text using the key from the note file metadata
+              const extractedTextKey = note.files[0]?.extractedTextKey;
+              let rawTextContent = '';
+              if (extractedTextKey) {
+                console.log(`[Flashcards] Retrieving extracted text with key: ${extractedTextKey}`);
+                rawTextContent = await getExtractedText(extractedTextKey) || '';
+                console.log(`[Flashcards] Retrieved extracted text length: ${rawTextContent.length}`);
+              } else {
+                console.warn('[Flashcards] No extractedTextKey found for the primary file. Raw text context will be missing.');
+              }
 
               const flashcards = await generateFlashcards({
                 noteContent: note.current.content,
-                rawText: rawContent
+                rawText: rawTextContent
               });
               
               // Save the flashcards first to ensure they're stored, then try to add images
@@ -1179,11 +903,20 @@ startxref
             const note = savedNotes[currentNoteId];
             if (!note) return;
 
-            const rawContent = note.files[0]?.fileUrl || '';
+            // Retrieve the extracted text using the key from the note file metadata
+            const extractedTextKey = note.files[0]?.extractedTextKey;
+            let rawTextContent = '';
+            if (extractedTextKey) {
+              console.log(`[Flashcards] Retrieving extracted text with key: ${extractedTextKey}`);
+              rawTextContent = await getExtractedText(extractedTextKey) || '';
+              console.log(`[Flashcards] Retrieved extracted text length: ${rawTextContent.length}`);
+            } else {
+              console.warn('[Flashcards] No extractedTextKey found for the primary file. Raw text context will be missing.');
+            }
 
             const flashcards = await generateFlashcards({
               noteContent: note.current.content,
-              rawText: rawContent
+              rawText: rawTextContent
             });
             
             // Save the flashcards first to ensure they're stored, then try to add images
@@ -1256,30 +989,20 @@ startxref
       ctx.fillText(`(placeholder)`, width / 2, height / 2 + 70);
       
       // Add a border to make it clearer this is a test image
-      ctx.strokeStyle = '#aaa';
-      ctx.lineWidth = 5;
-      ctx.strokeRect(10, 10, width - 20, height - 20);
+      ctx.strokeStyle = 'black';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(0, 0, width, height);
       
-      // Draw diagonal lines in corners to indicate test image
-      ctx.beginPath();
-      ctx.moveTo(10, 10);
-      ctx.lineTo(50, 50);
-      ctx.moveTo(width - 10, 10);
-      ctx.lineTo(width - 50, 50);
-      ctx.moveTo(10, height - 10);
-      ctx.lineTo(50, height - 50);
-      ctx.moveTo(width - 10, height - 10);
-      ctx.lineTo(width - 50, height - 50);
-      ctx.stroke();
-      
-      // Convert to JPEG with medium quality
+      // Convert to JPEG with good quality
       const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
       console.log(`Test image created successfully, size: ${Math.round(dataUrl.length/1024)}KB`);
       return dataUrl;
     } catch (error) {
       console.error('Error creating test image:', error);
-      return '';
+      return ''; // Ensure empty string is returned on error
     }
+    // Add a default return path if try-catch is somehow bypassed (though unlikely)
+    return '';
   };
 
   return (
@@ -1349,9 +1072,10 @@ startxref
         }}
       />
       <div className="h-full">
+        {/* Restore Modals */}
         {showTitlePrompt && pendingNote && (
           <TitlePrompt
-            defaultTitle={pendingNote.files[0]?.name || 'New Note'}
+            defaultTitle={pendingNote.sourceFiles[0]?.file.name || 'New Note'}
             onConfirm={handleTitleConfirm}
             onCancel={() => {
               setShowTitlePrompt(false);
@@ -1394,6 +1118,7 @@ startxref
           />
         )}
 
+        {/* Restore View Content */}
         {currentView === 'home' ? (
           <div className="flex flex-col items-center justify-center h-full">
             <div className="max-w-2xl w-full">
@@ -1525,8 +1250,10 @@ startxref
             </div>
           </div>
         ) : null}
+         {/* <h1>Testing Layout...</h1> */}
       </div>
     </Layout>
+    // <h1>Hello World - Test</h1>
   );
 }
 

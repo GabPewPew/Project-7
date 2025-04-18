@@ -83,12 +83,12 @@ Your task is to create a set of **comprehensive, exam-focused study notes** base
 - Maintain a tone suitable for students revising seriously or learning for the first time
 - Include examples, critical points, and **domain-specific logic** (see guide below)
 - Where appropriate, **reference the original source** to help students trace back content:
-    - If using a quote or idea from a **PDF**, mention the **page number** (e.g. “(p.12)”)
-    - If referencing spoken content from a **transcript or audio/video**, include the **approximate minute or timestamp** (e.g. “(at ~15:40)”)
+    - If using a quote or idea from a **PDF**, mention the **page number** (e.g. "(p.12)")
+    - If referencing spoken content from a **transcript or audio/video**, include the **approximate minute or timestamp** (e.g. "(at ~15:40)")
     - If a **figure, image, or table** is mentioned or relevant, describe it briefly and **point back to its original label or file source**
 
 ### 📚 How to Approach the Content:
-- Think of this as **teaching through notes** — progressively build the student’s understanding
+- Think of this as **teaching through notes** — progressively build the student's understanding
 - Provide:
     - **Key definitions**
     - **Stepwise frameworks**
@@ -230,12 +230,13 @@ Format the output with:
 - Summary of implications`;
   }
 
-  return `${metadata}${basePrompt}
+  // General instruction to add to all prompts
+  const pageReferenceInstruction = `\n\n**Important:** If the source content includes page number references (e.g., "(p. 12)", "Page 5"), please preserve these references in your output notes where relevant to help the user locate the original information.`;
 
-Content to analyze:
-${request.content}
+  // Append the instruction to the selected basePrompt
+  basePrompt += pageReferenceInstruction;
 
-Remember: This must be a UNIQUE analysis specific to this content. Do not generate generic or reused content.`;
+  return `${metadata}${basePrompt}\n\nContent to analyze:\n${request.content}\n\nRemember: This must be a UNIQUE analysis specific to this content. Do not generate generic or reused content.`;
 }
 
 export async function generateNotes(request: GeminiRequest): Promise<GeminiResponse> {

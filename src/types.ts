@@ -96,10 +96,7 @@ export interface SavedNote {
   };
   current: NoteVersion;
   history: NoteVersion[];
-  files: {
-    fileName: string;
-    fileUrl?: string;
-  }[];
+  files: FileMetadata[];
   audio?: {
     concise?: AudioData;
     detailed?: AudioData;
@@ -145,4 +142,15 @@ export interface NoteBlock {
   content: string;
   level?: 1 | 2 | 3;
   items?: string[];
+}
+
+export interface FileMetadata {
+  fileName: string;
+  fileType: 'pdf' | 'audio' | 'video' | 'unknown';
+  mimeType?: string;
+  size?: number;
+  totalPages?: number; // For PDFs
+  duration?: number; // For audio/video
+  fileUrl?: string; // Data URL or path where the original file is stored
+  extractedTextKey?: string; // Key to retrieve extracted plain text from IndexedDB
 }

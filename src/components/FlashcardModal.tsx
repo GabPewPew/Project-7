@@ -284,49 +284,45 @@ export function FlashcardModal({ flashcards, onClose, onUpdate }: FlashcardModal
               </span>
             </div>
 
+            {/* Conditional rendering based on image validity */}
             {currentCard.pageImage && currentCard.pageImage.length > 100 ? (
-              <div className="mt-2 border border-gray-200 rounded overflow-hidden bg-gray-50">
-                {/* Force better image rendering with stronger styling */}
-                <div style={{ 
-                  width: '100%',
-                  maxHeight: '230px',  // Increased height for better visibility
-                  display: 'flex',
-                  justifyContent: 'center',
-                  alignItems: 'center',
-                  overflow: 'hidden',
-                  backgroundColor: '#f9fafb'
-                }}>
-                  <img 
-                    src={currentCard.pageImage} 
+              // Outer container for margin, border, background
+              <div className="mt-2 p-1 bg-white border border-gray-300 rounded">
+                  {/* Apply Tailwind classes directly to the image */}
+                  <img
+                    src={currentCard.pageImage}
                     alt={`Page ${currentCard.pageNumber}`}
-                    style={{
-                      maxWidth: '100%',
-                      maxHeight: '230px',  // Increased height to match container
-                      objectFit: 'contain',
-                      display: 'block'
-                    }}
+                    className="w-full h-auto max-h-[40vh] object-contain" // Use Tailwind for sizing/fitting
                     onError={(e) => {
                       console.error(`Image failed to load for page ${currentCard.pageNumber}:`, e);
-                      
-                      // Add a fallback message
                       const parent = (e.target as HTMLImageElement).parentElement;
                       if (parent) {
                         (e.target as HTMLImageElement).style.display = 'none';
-                        const fallbackMsg = document.createElement('div');
-                        fallbackMsg.className = 'p-2 text-xs text-gray-500 text-center';
-                        fallbackMsg.innerText = 'Image preview unavailable';
-                        parent.appendChild(fallbackMsg);
+                        // Check if fallback already exists
+                        if (!parent.querySelector('.image-fallback-message')) {
+                            const fallbackMsg = document.createElement('div');
+                            fallbackMsg.className = 'image-fallback-message p-2 text-xs text-gray-500 text-center';
+                            fallbackMsg.innerText = 'Image preview unavailable';
+                            parent.appendChild(fallbackMsg);
+                        }
                       }
                     }}
-                    onLoad={() => {
+                    onLoad={(event) => { // Added event parameter for target access
                       console.log(`Page image for page ${currentCard.pageNumber} loaded successfully`);
+                       // Remove fallback if image loads successfully later
+                       const parent = (event.target as HTMLImageElement).parentElement;
+                       const fallback = parent?.querySelector('.image-fallback-message');
+                       if (fallback) {
+                           fallback.remove();
+                       }
+                       (event.target as HTMLImageElement).style.display = 'block';
                     }}
                   />
-                </div>
               </div>
             ) : (
               <div className="mt-2 p-2 bg-gray-50 border border-gray-200 rounded text-xs text-gray-500 text-center">
-                {currentCard.pageImage ? 'Image data invalid' : 'No image available for this page'}
+                {/* Provide clearer feedback */}
+                {currentCard.pageImage ? 'Image preview unavailable' : 'No image available for this page'}
               </div>
             )}
           </div>
