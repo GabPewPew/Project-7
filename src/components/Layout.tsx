@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Menu, Sparkles, ChevronLeft, GripVertical } from 'lucide-react';
+import { Menu, Sparkles, ChevronLeft, GripVertical, Home, FileText, BookOpen, Settings, X, Layers, Star, File } from 'lucide-react';
 import { Sidebar } from './Sidebar';
 import { SavedNote, FileStatus } from '../types';
 
@@ -7,13 +7,12 @@ interface LayoutProps {
   children: React.ReactNode;
   savedNotes: Record<string, SavedNote>;
   currentNoteId: string | null;
-  currentView: 'home' | 'note' | 'all-notes' | 'flashcard-review' | 'browse-cards';
+  currentView: 'home' | 'note' | 'all-notes' | 'all-my-cards' | 'flashcard-review';
   onNoteSelect: (noteId: string) => void;
   onDeleteNote: (noteId: string) => void;
   onHomeClick: () => void;
   onAllNotesClick: () => void;
-  onBrowseCardsClick?: () => void;
-  onReviewFlashcardsClick?: () => void;
+  onAllMyCardsClick: () => void;
   fileStatuses: FileStatus[];
   toolsContent?: React.ReactNode;
 }
@@ -27,8 +26,7 @@ export function Layout({
   onDeleteNote,
   onHomeClick,
   onAllNotesClick,
-  onBrowseCardsClick,
-  onReviewFlashcardsClick,
+  onAllMyCardsClick,
   fileStatuses,
   toolsContent
 }: LayoutProps) {
@@ -70,6 +68,18 @@ export function Layout({
 
   const startResizing = () => {
     setIsResizing(true);
+  };
+
+  const handleDeleteNote = async (noteId: string) => {
+    console.log(`[Layout] Requesting delete for noteId: ${noteId}`);
+    if (window.confirm('Are you sure you want to delete this note?')) {
+      try {
+        alert('Deletion initiated (placeholder - API call needed)');
+      } catch (err) {
+        console.error('Failed to delete note:', err);
+        alert('Failed to delete note.');
+      }
+    }
   };
 
   return (
@@ -135,8 +145,7 @@ export function Layout({
               onDeleteNote={onDeleteNote}
               onHomeClick={onHomeClick}
               onAllNotesClick={onAllNotesClick}
-              onBrowseCardsClick={onBrowseCardsClick}
-              onReviewFlashcardsClick={onReviewFlashcardsClick}
+              onAllMyCardsClick={onAllMyCardsClick}
               isOpen={true}
               fileStatuses={fileStatuses}
             />

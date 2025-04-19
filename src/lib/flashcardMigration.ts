@@ -12,7 +12,7 @@ export async function migrateFlashcards(savedNotes: Record<string, SavedNote>): 
   
   try {
     // First, ensure the default note type exists
-    await axios.post('http://localhost:3001/api/note-types/default');
+    await axios.post('/api/note-types/default');
     
     // Process each note with flashcards
     for (const noteId in savedNotes) {
@@ -39,7 +39,7 @@ export async function migrateFlashcards(savedNotes: Record<string, SavedNote>): 
           };
           
           // Create a note in the new system
-          const response = await axios.post('http://localhost:3001/api/notes', {
+          const response = await axios.post('/api/notes', {
             noteTypeId: 'default', // Will use the default note type
             fieldValues
           });

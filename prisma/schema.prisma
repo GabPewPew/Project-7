@@ -21,6 +21,14 @@ model NoteType {
   @@map("note_types")
 }
 
+model Deck {
+  id        String  @id @default(uuid())
+  name      String  @unique
+  cards     Card[]
+
+  @@map("decks")
+}
+
 model Note {
   id           String @id @default(uuid())
   noteTypeId   String
@@ -38,14 +46,19 @@ model Card {
   id                     String @id @default(uuid())
   noteId                 String
   note                   Note @relation(fields: [noteId], references: [id], onDelete: Cascade)
+  deckId                 String
+  deck                   Deck @relation(fields: [deckId], references: [id], onDelete: Cascade)
   noteTypeCardTemplateName String
-  frontContent           String // Rendered HTML
-  backContent            String // Rendered HTML
-  sourceDocumentId       String?
+  frontContent           String
+  backContent            String
   sourcePageNumber       Int?
+  sourcePageRaw          String?
+  sourceDocumentId       String?
   createdAt              DateTime @default(now())
   progress               CardProgress?
   
+  @@index([noteId])
+  @@index([deckId])
   @@map("cards")
 }
 

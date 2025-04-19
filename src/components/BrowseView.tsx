@@ -49,7 +49,7 @@ export default function BrowseView() {
     try {
       setIsLoading(true);
       const response = await axios.get(
-        `http://localhost:3001/api/cards/all?page=${page}&limit=${limit}`
+        `/api/cards/all?page=${page}&limit=${limit}`
       );
       
       setCards(response.data.cards);

@@ -1,17 +1,16 @@
 import React from 'react';
-import { Home, FileText, Loader2, Trash2, AlertCircle, Library } from 'lucide-react';
+import { Home, FileText, BookOpen, Settings, Menu, X, Layers, Star, File, Trash2 } from 'lucide-react';
 import { SavedNote, FileStatus } from '../types';
 
 interface SidebarProps {
   savedNotes: Record<string, SavedNote>;
   currentNoteId: string | null;
-  currentView: 'home' | 'note' | 'all-notes' | 'flashcard-review' | 'browse-cards';
+  currentView: 'home' | 'note' | 'all-notes' | 'all-my-cards' | 'flashcard-review';
   onNoteSelect: (noteId: string) => void;
   onDeleteNote: (noteId: string) => void;
   onHomeClick: () => void;
   onAllNotesClick: () => void;
-  onBrowseCardsClick?: () => void;
-  onReviewFlashcardsClick?: () => void;
+  onAllMyCardsClick: () => void;
   isOpen: boolean;
   fileStatuses: FileStatus[];
 }
@@ -24,10 +23,12 @@ export function Sidebar({
   onDeleteNote,
   onHomeClick,
   onAllNotesClick,
-  onBrowseCardsClick,
-  onReviewFlashcardsClick,
+  onAllMyCardsClick,
+  isOpen,
   fileStatuses
 }: SidebarProps) {
+  const sortedNotes = Object.values(savedNotes).sort((a, b) => b.updatedAt - a.updatedAt);
+
   const handleDeleteClick = (e: React.MouseEvent, noteId: string) => {
     e.stopPropagation();
     if (window.confirm('Are you sure you want to delete this note?')) {
@@ -36,134 +37,56 @@ export function Sidebar({
   };
 
   return (
-    <nav className="flex-1 overflow-y-auto p-4">
-      <button
-        onClick={onHomeClick}
-        className={`w-full flex items-center px-3 py-2 text-sm font-medium rounded-lg
-          transition-colors duration-150 ${
-            currentView === 'home'
-              ? 'bg-blue-50 text-blue-700'
-              : 'text-gray-700 hover:bg-gray-200'
-          }`}
-      >
-        <Home className="w-5 h-5 mr-2" />
-        Home
-      </button>
+    <div className="h-full flex flex-col bg-gray-100 overflow-hidden">
+      {/* Main navigation */}
+      <nav className="flex-grow overflow-y-auto bg-gray-100">
+        <ul className="space-y-1 p-2">
+          <li>
+            <a href="#" onClick={(e) => { e.preventDefault(); onHomeClick(); }} 
+               className={`flex items-center p-3 rounded-lg transition-colors ${currentView === 'home' ? 'bg-blue-100 text-blue-700 font-medium' : 'hover:bg-gray-200 text-gray-700'}`}>
+              <Home size={20} className="flex-shrink-0" />
+              {isOpen && <span className="ml-3">Home</span>}
+            </a>
+          </li>
+          <li>
+            <a href="#" onClick={(e) => { e.preventDefault(); onAllNotesClick(); }} 
+               className={`flex items-center p-3 rounded-lg transition-colors ${currentView === 'all-notes' ? 'bg-blue-100 text-blue-700 font-medium' : 'hover:bg-gray-200 text-gray-700'}`}>
+              <FileText size={20} className="flex-shrink-0" />
+              {isOpen && <span className="ml-3">All Notes</span>}
+            </a>
+          </li>
+          <li>
+            <a href="#" onClick={(e) => { e.preventDefault(); onAllMyCardsClick(); }} 
+               className={`flex items-center p-3 rounded-lg transition-colors ${currentView === 'all-my-cards' ? 'bg-blue-100 text-blue-700 font-medium' : 'hover:bg-gray-200 text-gray-700'}`}>
+              <Layers size={20} className="flex-shrink-0" />
+              {isOpen && <span className="ml-3">All My Cards</span>}
+            </a>
+          </li>
+        </ul>
 
-      <button
-        onClick={onAllNotesClick}
-        className={`w-full flex items-center px-3 py-2 text-sm font-medium rounded-lg mt-2
-          transition-colors duration-150 ${
-            currentView === 'all-notes'
-              ? 'bg-blue-50 text-blue-700'
-              : 'text-gray-700 hover:bg-gray-200'
-          }`}
-      >
-        <Library className="w-5 h-5 mr-2" />
-        All Notes
-      </button>
-
-      {onReviewFlashcardsClick && (
-        <button
-          onClick={onReviewFlashcardsClick}
-          className={`w-full flex items-center px-3 py-2 text-sm font-medium rounded-lg mt-2
-            transition-colors duration-150 ${
-              currentView === 'flashcard-review'
-                ? 'bg-blue-50 text-blue-700'
-                : 'text-gray-700 hover:bg-gray-200'
-            }`}
-        >
-          <FileText className="w-5 h-5 mr-2" />
-          Review Flashcards
-        </button>
-      )}
-
-      {onBrowseCardsClick && (
-        <button
-          onClick={onBrowseCardsClick}
-          className={`w-full flex items-center px-3 py-2 text-sm font-medium rounded-lg mt-2
-            transition-colors duration-150 ${
-              currentView === 'browse-cards'
-                ? 'bg-blue-50 text-blue-700'
-                : 'text-gray-700 hover:bg-gray-200'
-            }`}
-        >
-          <Library className="w-5 h-5 mr-2" />
-          Browse Cards
-        </button>
-      )}
-
-      {fileStatuses.length > 0 && (
-        <div className="mt-6">
-          <h3 className="px-3 text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
-            Processing
-          </h3>
-          <div className="space-y-1">
-            {fileStatuses.map(status => (
-              <div
-                key={status.id}
-                className={`flex items-center px-3 py-2 text-sm rounded-lg 
-                  ${status.status === 'error' ? 'text-red-700 bg-red-50' : 'text-gray-700'}`}
-              >
-                <div className="flex items-center min-w-0 flex-1">
-                  {status.status === 'generating' ? (
-                    <Loader2 className="w-4 h-4 mr-2 animate-spin text-blue-600" />
-                  ) : status.status === 'error' ? (
-                    <AlertCircle className="w-4 h-4 mr-2 text-red-600" />
-                  ) : (
-                    <FileText className="w-4 h-4 mr-2" />
-                  )}
-                  <span className="truncate">{status.fileName}</span>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      <div className="mt-6">
-        <h3 className="px-3 text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
-          Recent Notes
-        </h3>
-        <div className="space-y-1">
-          {Object.values(savedNotes)
-            .sort((a, b) => b.updatedAt - a.updatedAt)
-            .slice(0, 5)
-            .map(note => (
-              <div
-                key={note.noteId}
-                onClick={() => onNoteSelect(note.noteId)}
-                className={`group flex items-center justify-between px-3 py-2 text-sm rounded-lg 
-                  cursor-pointer hover:bg-gray-200 transition-colors duration-150
-                  ${currentNoteId === note.noteId ? 'bg-blue-50 text-blue-700' : 'text-gray-700'}`}
-              >
-                <div className="flex items-center min-w-0 flex-1">
-                  <FileText className="w-4 h-4 mr-2 flex-shrink-0" />
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate font-medium">
-                      {note.title || note.files[0]?.fileName || "Untitled Note"}
-                    </p>
-                    <p className="text-xs text-gray-500 truncate">
-                      Version {note.current.version} • {new Date(note.updatedAt).toLocaleDateString()}
-                    </p>
-                  </div>
-                </div>
-                <button
-                  onClick={(e) => handleDeleteClick(e, note.noteId)}
-                  className={`p-1.5 rounded-md opacity-0 group-hover:opacity-100 
-                    transition-opacity duration-200 ${
-                      currentNoteId === note.noteId
-                        ? 'text-blue-700 hover:bg-blue-100'
-                        : 'text-gray-500 hover:bg-gray-300'
-                    }`}
-                  aria-label="Delete note"
-                >
-                  <Trash2 className="w-4 h-4" />
-                </button>
-              </div>
-            ))}
-        </div>
-      </div>
-    </nav>
+        {isOpen && (
+          <>
+            <h3 className="px-4 pt-6 pb-2 text-xs font-semibold text-gray-500 uppercase tracking-wider">Recent Notes</h3>
+            <ul className="space-y-1 p-2">
+              {sortedNotes.slice(0, 10).map(note => (
+                <li key={note.noteId} className="relative group">
+                  <a href="#" onClick={(e) => { e.preventDefault(); onNoteSelect(note.noteId); }}
+                     className={`block w-full text-left p-3 rounded-lg transition-colors text-sm truncate ${currentNoteId === note.noteId && currentView === 'note' ? 'bg-blue-100 text-blue-700 font-medium' : 'hover:bg-gray-200 text-gray-700'}`}>
+                    {note.title || 'Untitled Note'}
+                  </a>
+                  <button 
+                    onClick={(e) => handleDeleteClick(e, note.noteId)}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 text-gray-400 hover:text-red-600 opacity-0 group-hover:opacity-100 transition-opacity focus:opacity-100 rounded-full hover:bg-red-100 focus:outline-none focus:ring-1 focus:ring-red-500"
+                    title="Delete Note"
+                  >
+                    <Trash2 size={16} />
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </>
+        )}
+      </nav>
+    </div>
   );
 }

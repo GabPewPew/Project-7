@@ -27,6 +27,19 @@ export default defineConfig({
       'path': 'path-browserify',
     }
   },
+  // Configure server and proxy settings
+  server: {
+    port: 5173, // Frontend port
+    proxy: {
+      // Forward all /api requests to the backend server
+      '/api': {
+        target: 'http://localhost:3000',
+        changeOrigin: true,
+        secure: false,
+        rewrite: (path) => path
+      }
+    }
+  },
   optimizeDeps: {
     include: ['sql.js']
   },

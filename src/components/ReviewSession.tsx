@@ -49,8 +49,8 @@ export default function ReviewSession({
     const fetchCards = async () => {
       try {
         setIsLoading(true);
-        const response = await axios.get<{ cards: Card[], counts: typeof counts }>(
-          `http://localhost:3001/api/session/cards?newLimit=${newLimit}&reviewLimit=${reviewLimit}`
+        const response = await axios.get(
+          `/api/session/cards?newLimit=${newLimit}&reviewLimit=${reviewLimit}`
         );
         
         setCards(response.data.cards);
@@ -105,8 +105,9 @@ export default function ReviewSession({
     if (currentIndex >= cards.length) return;
     
     try {
-      // Send the response to the server
-      await axios.post('http://localhost:3001/api/session/response', {
+      // Use relative URL for API request
+      await axios.post('/api/session/response', {
+        userId: 'demo_user', // Use actual user ID if available
         cardId: cards[currentIndex].id,
         response
       });

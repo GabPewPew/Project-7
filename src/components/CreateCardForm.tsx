@@ -42,12 +42,11 @@ export default function CreateCardForm({
   useEffect(() => {
     const initializeDefaultNoteType = async () => {
       try {
-        // Create default note type if it doesn't exist
-        const response = await axios.post('http://localhost:3001/api/note-types/default');
-        const defaultNoteType = response.data.noteType;
+        // Ensure default note type exists (consider moving this to app startup)
+        await axios.post('/api/note-types/default');
+        setNoteTypes(sampleNoteTypes); // Replace with actual types from response if needed
         
-        setNoteTypes([defaultNoteType]);
-        setSelectedNoteTypeId(defaultNoteType.id);
+        setSelectedNoteTypeId(sampleNoteTypes[0].id);
       } catch (error) {
         console.error('Error initializing default note type:', error);
         setError('Failed to initialize default note type. Please try again.');
@@ -88,9 +87,9 @@ export default function CreateCardForm({
       setIsLoading(true);
       setError(null);
       
-      const response = await axios.post('http://localhost:3001/api/notes', {
+      const response = await axios.post('/api/notes', {
         noteTypeId: selectedNoteTypeId,
-        fieldValues
+        fieldValues: fieldValues
       });
       
       setIsLoading(false);

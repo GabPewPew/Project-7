@@ -25,7 +25,7 @@ export async function generateAudio(
     const { style, voice, noteContent, rawText, userId, noteId, normalizedTitle } = options;
 
     console.log(`🔊 Generating ${style} audio lecture...`);
-    const response = await axios.post('http://localhost:3001/api/generate-audio', {
+    const response = await axios.post('/api/generate-audio', {
       userId,
       noteId,
       normalizedTitle,

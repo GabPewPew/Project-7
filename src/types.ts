@@ -81,7 +81,9 @@ export interface Flashcard {
   back: string;
   pageNumber?: number;
   pageImage?: string;
-  sourceText?: string;
+  noteId?: string;
+  deckId?: string;
+  progress?: CardProgress;
 }
 
 export interface FlashcardProgress {
@@ -122,6 +124,7 @@ export interface SavedNote {
     detailed?: AudioData;
   };
   flashcards?: Flashcard[];
+  sourceText?: string;
 }
 
 export interface FileStatus {
@@ -174,3 +177,18 @@ export interface FileMetadata {
   fileUrl?: string;
   extractedTextKey?: string;
 }
+
+// --- NEW: Interface for card progress (matching Prisma model) ---
+export interface CardProgress {
+  id: string;
+  cardId: string;
+  userId: string;
+  repetitions: number;
+  easeFactor: number; // Stored as permille (e.g., 2500 for 2.5)
+  interval: number;   // Stored in days (can be float)
+  dueDate: string;    // ISO Date string (e.g., "2023-10-27T00:00:00.000Z")
+  state: 'new' | 'learning' | 'review' | 'relearning';
+  learningStep?: number;
+  lastReviewDate?: string | null; // ISO Date string or null
+}
+// ----------------------------------------------------------------
